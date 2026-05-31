@@ -39,15 +39,15 @@ type TcFilterIpsetLpmKey struct {
 	Addr      uint32
 }
 
-type TcFilterRuleCounter struct {
-	Packets uint64
-	Bytes   uint64
-}
-
-type TcFilterTokenBucket struct {
+type TcFilterQfTokenBucket struct {
 	LastNs uint64
 	Tokens uint32
 	Pad    uint32
+}
+
+type TcFilterRuleCounter struct {
+	Packets uint64
+	Bytes   uint64
 }
 
 type TcFilterRuleEntry struct {
@@ -141,7 +141,7 @@ type TcFilterMapSpecs struct {
 	QfConntrack       *ebpf.MapSpec `ebpf:"qf_conntrack"`
 	QfEvents          *ebpf.MapSpec `ebpf:"qf_events"`
 	QfIpsets          *ebpf.MapSpec `ebpf:"qf_ipsets"`
-	QfRateLimit       *ebpf.MapSpec `ebpf:"qf_rate_limits"`
+	QfRateLimits      *ebpf.MapSpec `ebpf:"qf_rate_limits"`
 	QfRuleCount       *ebpf.MapSpec `ebpf:"qf_rule_count"`
 	QfRuleCounters    *ebpf.MapSpec `ebpf:"qf_rule_counters"`
 	QfRules           *ebpf.MapSpec `ebpf:"qf_rules"`
@@ -178,7 +178,7 @@ type TcFilterMaps struct {
 	QfConntrack       *ebpf.Map `ebpf:"qf_conntrack"`
 	QfEvents          *ebpf.Map `ebpf:"qf_events"`
 	QfIpsets          *ebpf.Map `ebpf:"qf_ipsets"`
-	QfRateLimit       *ebpf.Map `ebpf:"qf_rate_limits"`
+	QfRateLimits      *ebpf.Map `ebpf:"qf_rate_limits"`
 	QfRuleCount       *ebpf.Map `ebpf:"qf_rule_count"`
 	QfRuleCounters    *ebpf.Map `ebpf:"qf_rule_counters"`
 	QfRules           *ebpf.Map `ebpf:"qf_rules"`
@@ -191,7 +191,7 @@ func (m *TcFilterMaps) Close() error {
 		m.QfConntrack,
 		m.QfEvents,
 		m.QfIpsets,
-		m.QfRateLimit,
+		m.QfRateLimits,
 		m.QfRuleCount,
 		m.QfRuleCounters,
 		m.QfRules,

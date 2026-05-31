@@ -19,7 +19,7 @@ check_rate_limit(__u32 rule_idx, __u16 rate_limit)
 	if (!rate_limit)
 		return 1;
 
-	struct token_bucket *tb = bpf_map_lookup_elem(&qf_rate_limits, &rule_idx);
+	struct qf_token_bucket *tb = bpf_map_lookup_elem(&qf_rate_limits, &rule_idx);
 	if (!tb)
 		return 1; /* PERCPU_ARRAY lookup always succeeds for valid idx */
 

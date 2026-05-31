@@ -56,13 +56,13 @@ struct {
 } qf_ipsets SEC(".maps");
 
 /* Per-rule token buckets for log-rate limiting. Per-CPU: no atomic ops needed.
- * Key: rule index; value: struct token_bucket.
+ * Key: rule index; value: struct qf_token_bucket.
  * Initialized lazily on first packet per CPU (last_ns==0 → full bucket). */
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, MAX_RULES);
 	__type(key, __u32);
-	__type(value, struct token_bucket);
+	__type(value, struct qf_token_bucket);
 } qf_rate_limits SEC(".maps");
 
 /* Suppressed log-event count since last userspace readout. Single slot [0].

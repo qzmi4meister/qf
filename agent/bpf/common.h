@@ -174,7 +174,7 @@ struct rule_counter {
 
 /* Per-rule token bucket for log rate limiting (per-CPU map value).
  * last_ns=0 means uninitialized; tokens refills at log_rate_limit_per_sec/s. */
-struct token_bucket {
+struct qf_token_bucket {
 	__u64 last_ns;
 	__u32 tokens;
 	__u32 _pad;
