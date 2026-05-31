@@ -9,6 +9,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 ## [0.3.0] — 2026-05-31
 
 ### Added
+- P3-INGEST-01: Ingester — `cp/internal/ingest/`; 4 workers (log/flow/counter/system), buffered channels (10k/1k), flush on maxBatch=2000 or 1s tick; bulk-insert via `pgx.CopyFrom` (log/flow/counter), single-row for system_events; `convert.go`: proto→storegen params, `bytesToAddr` (4/16 bytes→`*netip.Addr`), enum→string helpers; drop on channel full with slog.Warn
 - P3-DB-02: sqlc telemetry queries — `InsertLogEventsBatch`, `InsertFlowEventsBatch`, `InsertCounterSnapshotsBatch` (`:copyfrom` → `pgx.CopyFrom`), `InsertSystemEvent :one`; list queries with optional time-range + filter params: `ListLogEvents`, `ListFlowEvents`, `ListCounterSnapshots`, `GetLatestCounterSnapshotsForHost` (DISTINCT ON rule_id), `ListSystemEvents`, `DeleteOldSystemEvents`; `InsertAuditLog` + `ListAuditLog` with actor/object filters; sqlc.yaml: inet override → `*netip.Addr` (pgx/v5 native)
 - P3-DB-01: observability migrations — `log_events` (partitioned daily), `flow_events` (partitioned daily), `counter_snapshots` (partitioned weekly), `system_events` (regular table, low-volume); indexes on `(host_id, created_at)`, `(rule_id, created_at)`; DO-block seeds initial partitions (today +30d for daily, current ISO week +8w for weekly); TTL/extension handled by partition manager (P3-INGEST-03)
 
