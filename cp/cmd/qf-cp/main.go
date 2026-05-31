@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/qf/qf/cp/internal/agentsrv"
 	"github.com/qf/qf/cp/internal/api"
+	"github.com/qf/qf/cp/internal/metrics"
 	"github.com/qf/qf/cp/internal/pki"
 	"github.com/qf/qf/cp/internal/policy"
 	"github.com/qf/qf/cp/internal/store"
@@ -54,6 +55,22 @@ func run() error {
 	sqlDB.Close()
 
 	queries := storegen.New(pool)
+
+	// Periodically update DB pool metrics for Prometheus.
+	go func() {
+		t := time.NewTicker(15 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				s := pool.Stat()
+				metrics.DBPoolAcquired.Set(float64(s.AcquiredConns()))
+				metrics.DBPoolIdle.Set(float64(s.IdleConns()))
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	// ── PKI ───────────────────────────────────────────────────────────────────
 	masterKey, err := hex.DecodeString(cfg.masterKeyHex)

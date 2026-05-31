@@ -24,7 +24,7 @@ WHERE tenant_id = $1
   AND ($3::timestamptz IS NULL OR created_at >= $3)
   AND ($4::timestamptz IS NULL OR created_at < $4)
   AND ($5::uuid IS NULL OR rule_id = $5)
-  AND ($6::text IS NULL OR action = $6)
+  AND ($6 = '' OR action = $6)
 ORDER BY created_at DESC
 LIMIT $7;
 
@@ -124,9 +124,9 @@ RETURNING *;
 SELECT id, tenant_id, actor_type, actor_id, action, object_type, object_id, before, after, created_at
 FROM audit_log
 WHERE tenant_id = $1
-  AND ($2::text IS NULL OR actor_type = $2)
+  AND ($2 = '' OR actor_type = $2)
   AND ($3::uuid IS NULL OR actor_id = $3)
-  AND ($4::text IS NULL OR object_type = $4)
+  AND ($4 = '' OR object_type = $4)
   AND ($5::uuid IS NULL OR object_id = $5)
   AND ($6::timestamptz IS NULL OR created_at >= $6)
   AND ($7::timestamptz IS NULL OR created_at < $7)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/metrics"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 )
@@ -127,6 +128,7 @@ func (ing *Ingester) logWorker(ctx context.Context) {
 			slog.Error("ingest: log flush failed", "err", err, "rows", len(batch))
 		} else {
 			slog.Debug("ingest: log flush", "rows", n)
+			metrics.EventsIngested.WithLabelValues("log").Add(float64(n))
 		}
 		batch = batch[:0]
 	}
@@ -165,6 +167,7 @@ func (ing *Ingester) flowWorker(ctx context.Context) {
 			slog.Error("ingest: flow flush failed", "err", err, "rows", len(batch))
 		} else {
 			slog.Debug("ingest: flow flush", "rows", n)
+			metrics.EventsIngested.WithLabelValues("flow").Add(float64(n))
 		}
 		batch = batch[:0]
 	}
@@ -203,6 +206,7 @@ func (ing *Ingester) counterWorker(ctx context.Context) {
 			slog.Error("ingest: counter flush failed", "err", err, "rows", len(batch))
 		} else {
 			slog.Debug("ingest: counter flush", "rows", n)
+			metrics.EventsIngested.WithLabelValues("counter").Add(float64(n))
 		}
 		batch = batch[:0]
 	}
@@ -239,6 +243,8 @@ func (ing *Ingester) systemWorker(ctx context.Context) {
 			}
 			if _, err := ing.q.InsertSystemEvent(ctx, p); err != nil {
 				slog.Error("ingest: system event insert failed", "err", err)
+			} else {
+				metrics.EventsIngested.WithLabelValues("system").Add(1)
 			}
 		case <-tick.C:
 			// nothing to flush — system events are inserted one by one

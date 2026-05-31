@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/qf/qf/cp/internal/metrics"
 	"github.com/qf/qf/cp/internal/policy"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 )
@@ -44,6 +45,7 @@ func (r *StreamRegistry) register(hostID string, s qfv1.AgentService_StreamServe
 	r.mu.Lock()
 	r.streams[hostID] = &activeStream{stream: s, disconnectCh: ch}
 	r.mu.Unlock()
+	metrics.ActiveStreams.Inc()
 	return ch
 }
 
@@ -51,6 +53,7 @@ func (r *StreamRegistry) deregister(hostID string) {
 	r.mu.Lock()
 	delete(r.streams, hostID)
 	r.mu.Unlock()
+	metrics.ActiveStreams.Dec()
 }
 
 // Dispatch implements policy.Dispatcher: pushes a bundle to the host's active stream.

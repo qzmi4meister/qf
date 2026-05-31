@@ -19,13 +19,22 @@ func NewRouter(queries *storegen.Queries, tokens *pki.TokenStore) *chi.Mux {
 	r.Use(middleware.RequestID)
 	r.Use(structuredLogger)
 	r.Use(middleware.Recoverer)
+	r.Use(newAuditMiddleware(queries))
 
 	r.Get("/healthz", handleHealthz)
-	r.Route("/hosts", func(r chi.Router) { registerHosts(r, queries) })
+	r.Get("/metrics", handleMetrics)
+
+	r.Route("/hosts", func(r chi.Router) {
+		registerHosts(r, queries)
+		r.Route("/{id}", func(r chi.Router) {
+			registerEvents(r, queries)
+		})
+	})
 	r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries) })
 	r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries) })
 	r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
 	r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries) })
+	r.Route("/audit-log", func(r chi.Router) { registerAuditLog(r, queries) })
 
 	return r
 }
