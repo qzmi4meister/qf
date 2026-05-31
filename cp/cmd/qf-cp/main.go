@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/qf/qf/cp/internal/agentsrv"
 	"github.com/qf/qf/cp/internal/api"
+	"github.com/qf/qf/cp/internal/ingest"
 	"github.com/qf/qf/cp/internal/metrics"
 	"github.com/qf/qf/cp/internal/pki"
 	"github.com/qf/qf/cp/internal/policy"
@@ -55,6 +56,13 @@ func run() error {
 	sqlDB.Close()
 
 	queries := storegen.New(pool)
+
+	// ── Telemetry ingester + partition manager ────────────────────────────────
+	ing := ingest.New(queries)
+	go ing.Start(ctx)
+
+	pm := ingest.NewPartitionManager(pool)
+	go pm.Start(ctx)
 
 	// Periodically update DB pool metrics for Prometheus.
 	go func() {
@@ -101,7 +109,7 @@ func run() error {
 	bundleBuilder := policy.NewBundleBuilder(queries, bundleSigner)
 	registry := agentsrv.NewStreamRegistry()
 
-	grpcSrv, err := agentsrv.NewMTLSServer(serverCert, ca, rc, queries, bundleBuilder, registry, version.Version)
+	grpcSrv, err := agentsrv.NewMTLSServer(serverCert, ca, rc, queries, bundleBuilder, registry, version.Version, ing)
 	if err != nil {
 		return fmt.Errorf("mTLS gRPC server: %w", err)
 	}

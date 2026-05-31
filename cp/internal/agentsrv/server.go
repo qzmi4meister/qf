@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 
+	"github.com/qf/qf/cp/internal/ingest"
 	"github.com/qf/qf/cp/internal/pki"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
@@ -28,16 +29,17 @@ type AgentServer struct {
 	ca       *pki.CA
 	rc       *pki.RevocationChecker
 	version  string
+	ingester *ingest.Ingester
 }
 
 // NewAgentServer creates an AgentServer.
-func NewAgentServer(queries *storegen.Queries, bundles BundleProvider, registry *StreamRegistry, ca *pki.CA, rc *pki.RevocationChecker, version string) *AgentServer {
-	return &AgentServer{queries: queries, bundles: bundles, registry: registry, ca: ca, rc: rc, version: version}
+func NewAgentServer(queries *storegen.Queries, bundles BundleProvider, registry *StreamRegistry, ca *pki.CA, rc *pki.RevocationChecker, version string, ingester *ingest.Ingester) *AgentServer {
+	return &AgentServer{queries: queries, bundles: bundles, registry: registry, ca: ca, rc: rc, version: version, ingester: ingester}
 }
 
 // NewMTLSServer builds a gRPC server with mutual TLS and registers AgentServer.
 // Returns the server and the StreamRegistry (implements policy.Dispatcher).
-func NewMTLSServer(serverCert tls.Certificate, ca *pki.CA, rc *pki.RevocationChecker, queries *storegen.Queries, bundles BundleProvider, registry *StreamRegistry, ver string) (*grpc.Server, error) {
+func NewMTLSServer(serverCert tls.Certificate, ca *pki.CA, rc *pki.RevocationChecker, queries *storegen.Queries, bundles BundleProvider, registry *StreamRegistry, ver string, ingester *ingest.Ingester) (*grpc.Server, error) {
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(ca.CertPEM) {
 		return nil, fmt.Errorf("agentsrv: failed to load CA cert into pool")
@@ -54,6 +56,6 @@ func NewMTLSServer(serverCert tls.Certificate, ca *pki.CA, rc *pki.RevocationChe
 		grpc.Creds(credentials.NewTLS(tlsCfg)),
 		grpc.StreamInterceptor(StreamAuthInterceptor),
 	)
-	qfv1.RegisterAgentServiceServer(srv, NewAgentServer(queries, bundles, registry, ca, rc, ver))
+	qfv1.RegisterAgentServiceServer(srv, NewAgentServer(queries, bundles, registry, ca, rc, ver, ingester))
 	return srv, nil
 }

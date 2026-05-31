@@ -151,8 +151,19 @@ func (s *AgentServer) handleMessage(stream qfv1.AgentService_StreamServer, id *P
 		return s.handleBundleApplied(stream.Context(), id, p.BundleApplied)
 	case *qfv1.AgentMessage_CertRenewalRequest:
 		return s.handleCertRenewal(stream.Context(), stream, id, p.CertRenewalRequest)
+	case *qfv1.AgentMessage_LogEvents:
+		s.handleLogEvents(id, p.LogEvents)
+		return nil
+	case *qfv1.AgentMessage_FlowEvents:
+		s.handleFlowEvents(id, p.FlowEvents)
+		return nil
+	case *qfv1.AgentMessage_CounterUpdate:
+		s.handleCounterUpdate(id, p.CounterUpdate)
+		return nil
+	case *qfv1.AgentMessage_SystemEvent:
+		s.handleSystemEvent(id, p.SystemEvent)
+		return nil
 	default:
-		// Telemetry, cert renewal, etc. handled in later tasks.
 		return nil
 	}
 }

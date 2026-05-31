@@ -171,6 +171,58 @@ func (s *AgentServer) handleCertRenewal(ctx context.Context, stream qfv1.AgentSe
 	})
 }
 
+// handleLogEvents forwards a log event batch to the ingester (best-effort).
+func (s *AgentServer) handleLogEvents(id *PeerIdentity, msg *qfv1.LogEvents) {
+	if s.ingester == nil {
+		return
+	}
+	hostUUID, tenantUUID, err := parseUUIDs(id.HostID, id.TenantID)
+	if err != nil {
+		slog.Warn("agentsrv: LogEvents parse identity failed", "host", id.HostID, "err", err)
+		return
+	}
+	s.ingester.IngestLogEvents(tenantUUID, hostUUID, msg)
+}
+
+// handleFlowEvents forwards a flow event batch to the ingester (best-effort).
+func (s *AgentServer) handleFlowEvents(id *PeerIdentity, msg *qfv1.FlowEvents) {
+	if s.ingester == nil {
+		return
+	}
+	hostUUID, tenantUUID, err := parseUUIDs(id.HostID, id.TenantID)
+	if err != nil {
+		slog.Warn("agentsrv: FlowEvents parse identity failed", "host", id.HostID, "err", err)
+		return
+	}
+	s.ingester.IngestFlowEvents(tenantUUID, hostUUID, msg)
+}
+
+// handleCounterUpdate forwards counter snapshots to the ingester (best-effort).
+func (s *AgentServer) handleCounterUpdate(id *PeerIdentity, msg *qfv1.CounterUpdate) {
+	if s.ingester == nil {
+		return
+	}
+	hostUUID, tenantUUID, err := parseUUIDs(id.HostID, id.TenantID)
+	if err != nil {
+		slog.Warn("agentsrv: CounterUpdate parse identity failed", "host", id.HostID, "err", err)
+		return
+	}
+	s.ingester.IngestCounterUpdate(tenantUUID, hostUUID, msg)
+}
+
+// handleSystemEvent forwards a system event to the ingester (best-effort).
+func (s *AgentServer) handleSystemEvent(id *PeerIdentity, msg *qfv1.SystemEvent) {
+	if s.ingester == nil {
+		return
+	}
+	hostUUID, tenantUUID, err := parseUUIDs(id.HostID, id.TenantID)
+	if err != nil {
+		slog.Warn("agentsrv: SystemEvent parse identity failed", "host", id.HostID, "err", err)
+		return
+	}
+	s.ingester.IngestSystemEvent(tenantUUID, hostUUID, msg)
+}
+
 func parseUUIDs(hostID, tenantID string) (pgtype.UUID, pgtype.UUID, error) {
 	var h, t pgtype.UUID
 	if err := h.Scan(hostID); err != nil {
