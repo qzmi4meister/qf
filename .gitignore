@@ -1,0 +1,43 @@
+# Go
+bin/
+*.test
+*.out
+coverage.txt
+vendor/
+
+# bpf2go outputs are committed — CI uses them without re-generating.
+# Re-run `make generate` after changing BPF C source.
+proto/**/*.pb.go
+proto/**/*_grpc.pb.go
+cp/internal/store/gen/
+
+# BPF intermediate build artifacts (make bpf output dir)
+agent/bpf/.output/
+
+# UI
+ui/node_modules/
+ui/dist/
+
+# Secrets / local config
+*.env
+.env.*
+!.env.example
+cp/master.key
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent meta / backlog (local planning artifacts)
+.agents-meta/
+
+# Runtime logs
+errors.log

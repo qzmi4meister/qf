@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package qf.v1;
+
+option go_package = "github.com/qf/qf/proto/qf/v1;qfv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Initial agent enrollment. NOT protected by mTLS — authentication is via
+// the bootstrap_token. Called once per host (or per re-bootstrap after
+// cert expiry). After successful Enroll, the agent uses the issued cert
+// to connect to AgentService over mTLS.
+service EnrollmentService {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message EnrollRequest {
+  // Bootstrap token (single-host or bulk) as plaintext over TLS.
+  // Validated by CP; consumed/decremented on success.
+  string bootstrap_token = 1;
+
+  // PEM-encoded Certificate Signing Request. The public key inside is the
+  // agent's freshly-generated keypair. The private key never leaves the host.
+  string csr_pem = 2;
+
+  // Hostname as observed by the agent. For single-host tokens, MUST match
+  // the targeted host record's hostname. For bulk tokens, used as the
+  // hostname of the newly created host record.
+  string hostname = 3;
+
+  // Optional system info captured at enrollment time. Persisted on the
+  // host record for inventory and troubleshooting.
+  string agent_version = 10;
+  string kernel_version = 11;
+  string os_release = 12;       // e.g. "Ubuntu 24.04"
+  string arch = 13;             // amd64 | arm64
+}
+
+message EnrollResponse {
+  // PEM-encoded client certificate signed by CP's CA.
+  // Subject contains CN=<host_uuid>, OU=<tenant_uuid>.
+  string cert_pem = 1;
+
+  // PEM-encoded root CA certificate. Agent stores this as the trust anchor
+  // for verifying the CP gRPC server certificate.
+  string ca_pem = 2;
+
+  // PEM-encoded public key used to verify policy bundle signatures.
+  // Separate from the CA — see design/06-pki.md (bundle signing key).
+  string bundle_signing_pub_pem = 3;
+
+  // Identity assigned to this agent. Also embedded in cert Subject; provided
+  // here for the agent to know its own identity without parsing the cert.
+  string host_id = 4;
+  string tenant_id = 5;
+
+  // Endpoint for the main agent stream (gRPC). Typically the same host that
+  // served Enroll, but allows redirection (e.g., to a regional CP).
+  string cp_endpoint = 6;       // e.g. "cp.qf.example.com:443"
+
+  // Issued cert's expiry. Agent uses this to schedule rotation.
+  google.protobuf.Timestamp cert_not_after = 7;
+}
