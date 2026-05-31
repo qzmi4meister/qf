@@ -6,6 +6,22 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- P3-AGT-07: Agent main rewire — `agent.Agent.RunFull(ctx, RunFullConfig)` runs full gRPC session loop with `RunWithReconnect`; `runSession` orchestrates HandshakeResult→disk replay→SystemEvent goroutines (HeartbeatSender, EventBatcher, CounterPoller, FlowEventCollector, CertRotator); main receive loop dispatches PolicyBundle/ConfigUpdate/DisconnectRequest/CertRenewalResponse; `Start(ctx)` kept for test compat; `main.go` rewritten: config from `/etc/qf/agent.conf`, slog JSON logging, `RunFull` instead of simple drain
+- P3-AGT-06: DiskBuffer — `grpcclient/diskbuffer.go`; persists `AgentMessage` protos as `<unix_ns>.pb` in `/var/lib/qf/events/`; bounded 100 MB (drop oldest on overflow); `Write(msg)` + `Replay(ctx, sendFn)` — replay deletes each file on successful send; corrupt files deleted silently
+- P3-AGT-05: ConfigUpdate handler — `grpcclient/configupdate.go`; `ApplyConfigUpdate(cfg, hb, eb, cp, fc)` updates HeartbeatSender interval, EventBatcher batch size + max age, CounterPoller interval, FlowEventCollector enabled flag; all nil-safe
+- P3-AGT-04: SystemEventEmitter — `grpcclient/systemevent.go`; `SendSystemEvent(stream, type, severity, detail, attrs)`; constants: `EventAgentStarted`, `EventCPConnected`, `EventCPDisconnected`, `EventBundleApplied`, `EventBundleCacheLoaded`, `EventAttachFailed`, `EventCertRotated`
+- P3-AGT-03: FlowEventCollector — `grpcclient/flowcollector.go`; periodic conntrack scan when `flow_events_enabled`; `flowKey` struct with fixed `[4]byte` arrays (net.IP not comparable); detects TCP_CLOSED flows + disappeared flows; emits `FlowEvents` batch; `SetEnabled(bool)` for runtime toggle
+- P3-AGT-02: CounterPoller — `grpcclient/counterpoller.go`; ticks on `counter_report_interval_ms` (default 60s); reads BPF counters via `loader.Loader.ReadCounters()`; maps index → rule_id from `handler.ApplyResult.Rules` (added `Rules []loader.RuleSpec` field to ApplyResult); sends `CounterUpdate`; BPF read errors skipped silently
+- P3-AGT-01: EventBatcher — `grpcclient/eventbatcher.go`; reads `loader.EventReader` in goroutine; flush on `batchSize` events or `maxAgeMs` timer (timer drain + Reset after size-flush); `SetBatchSize`/`SetMaxAgeMs` for runtime ConfigUpdate; reads+resets `qf_suppressed_count` via `loader.Loader` before send; `loaderEventToProto`: `timestamppb.Now()` for Ts (CLOCK_MONOTONIC offset deferred), bpf→proto enum converters for Direction/Action/Protocol/ConntrackState; `uuidBytesToString([16]byte)`
+- P3-BPF-01: token bucket rate limiting — `common.h`: `struct token_bucket{last_ns, tokens}`; `maps.h`: `qf_rate_limits` PERCPU_ARRAY (MAX_RULES) + `qf_suppressed_count` PERCPU_ARRAY (1 slot); `tc_filter.c`: `check_rate_limit(rule_idx, rate_limit)` — refill `elapsed*rate/1e9` tokens (cap elapsed 1s), suppress + increment `qf_suppressed_count` when empty; `emit_log` + `apply_action` take `rule_idx` + `rate_limit`; Go stubs: `TcFilterTokenBucket`, `QfRateLimit`/`QfSuppressedCount` map fields; `loader/counters.go`: `ReadSuppressedCount`, `ResetSuppressedCount` (PERCPU aggregate + zero-reset)
+- P3-INGEST-02: gRPC telemetry handlers — `agentsrv/handlers.go`: `handleLogEvents`, `handleFlowEvents`, `handleCounterUpdate`, `handleSystemEvent` (best-effort, no stream close on error); `session.go` `handleMessage` dispatches 4 new cases; `AgentServer` carries `*ingest.Ingester` field; `NewMTLSServer` + `NewAgentServer` accept ingester
+- P3-INGEST-03: PartitionManager — `cp/internal/ingest/partitions.go`; runs on startup + 24h tick; creates daily partitions 7 days ahead for log_events/flow_events, weekly 2 weeks ahead for counter_snapshots; drops expired partitions (log 7d, flow 14d, counter 30d); DELETEs expired system_events rows (30d TTL); `validPartitionName` regex guards DDL; started from `main.go`
+
+---
+
 ## [0.3.0] — 2026-05-31
 
 ### Added

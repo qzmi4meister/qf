@@ -27,6 +27,8 @@ type ApplyResult struct {
 	Warnings   []string
 	DurationMs uint32
 	AppliedAt  time.Time
+	// Rules is the ordered slice pushed to BPF; index i maps to counter slot i.
+	Rules []loader.RuleSpec
 }
 
 // PolicyHandler applies PolicyBundle messages to the BPF datapath.
@@ -72,6 +74,7 @@ func (h *PolicyHandler) Apply(bundle *qfv1.PolicyBundle) (*ApplyResult, error) {
 		Warnings:   res.Warnings,
 		DurationMs: uint32(time.Since(start).Milliseconds()),
 		AppliedAt:  time.Now(),
+		Rules:      res.Rules,
 	}
 	h.mu.Lock()
 	h.current = ar

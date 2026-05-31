@@ -2,36 +2,70 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/qf/qf/agent/internal/agent"
+	"github.com/qf/qf/agent/internal/config"
+	"github.com/qf/qf/agent/internal/grpcclient"
 	"github.com/qf/qf/agent/internal/loader"
 )
 
 func main() {
-	iface := "eth0"
-	if len(os.Args) > 1 {
-		iface = os.Args[1]
+	cfg, err := config.LoadDefault()
+	if err != nil {
+		slog.Error("config load failed", "err", err)
+		os.Exit(1)
 	}
 
-	l, err := loader.Load(iface)
+	setupLogging(cfg.LogLevel)
+
+	l, err := loader.Load(cfg.Interface)
 	if err != nil {
-		log.Fatalf("load: %v", err)
+		slog.Error("BPF load failed", "iface", cfg.Interface, "err", err)
+		os.Exit(1)
 	}
 	defer l.Close()
 
-	logger := log.New(os.Stderr, "[qf] ", log.LstdFlags)
-	ag := agent.New(l, logger)
+	ag := agent.New(l, nil)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	log.Printf("qf attached on %s", iface)
-	if err := ag.Start(ctx); err != nil {
-		log.Fatalf("agent: %v", err)
+	slog.Info("qf-agent starting", "iface", cfg.Interface, "cp", cfg.CPEndpoint)
+
+	grpcCfg := grpcclient.Config{
+		CertFile:   cfg.PKIDir + "/agent.crt",
+		KeyFile:    cfg.PKIDir + "/agent.key",
+		CAFile:     cfg.PKIDir + "/ca.crt",
+		CPEndpoint: cfg.CPEndpoint,
 	}
-	log.Println("detaching...")
+	diskBuf := grpcclient.NewDiskBuffer("")
+
+	if err := ag.RunFull(ctx, agent.RunFullConfig{
+		GRPC:    grpcCfg,
+		DiskBuf: diskBuf,
+	}); err != nil {
+		slog.Error("agent exited with error", "err", err)
+		os.Exit(1)
+	}
+
+	slog.Info("qf-agent stopped")
+}
+
+func setupLogging(level string) {
+	var l slog.Level
+	switch level {
+	case "debug":
+		l = slog.LevelDebug
+	case "warn":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	default:
+		l = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: l})))
 }
