@@ -172,6 +172,14 @@ struct rule_counter {
 	__u64 bytes;
 };
 
+/* Per-rule token bucket for log rate limiting (per-CPU map value).
+ * last_ns=0 means uninitialized; tokens refills at log_rate_limit_per_sec/s. */
+struct token_bucket {
+	__u64 last_ns;
+	__u32 tokens;
+	__u32 _pad;
+};
+
 /* Parsed packet context — filled by parse_packet() in parser.h.
  * Caller sets direction before calling; all other fields are output. */
 struct pkt_ctx {

@@ -44,6 +44,12 @@ type TcFilterRuleCounter struct {
 	Bytes   uint64
 }
 
+type TcFilterTokenBucket struct {
+	LastNs uint64
+	Tokens uint32
+	Pad    uint32
+}
+
 type TcFilterRuleEntry struct {
 	Action             uint8
 	LogEnabled         uint8
@@ -131,13 +137,15 @@ type TcFilterProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type TcFilterMapSpecs struct {
-	QfConfig       *ebpf.MapSpec `ebpf:"qf_config"`
-	QfConntrack    *ebpf.MapSpec `ebpf:"qf_conntrack"`
-	QfEvents       *ebpf.MapSpec `ebpf:"qf_events"`
-	QfIpsets       *ebpf.MapSpec `ebpf:"qf_ipsets"`
-	QfRuleCount    *ebpf.MapSpec `ebpf:"qf_rule_count"`
-	QfRuleCounters *ebpf.MapSpec `ebpf:"qf_rule_counters"`
-	QfRules        *ebpf.MapSpec `ebpf:"qf_rules"`
+	QfConfig          *ebpf.MapSpec `ebpf:"qf_config"`
+	QfConntrack       *ebpf.MapSpec `ebpf:"qf_conntrack"`
+	QfEvents          *ebpf.MapSpec `ebpf:"qf_events"`
+	QfIpsets          *ebpf.MapSpec `ebpf:"qf_ipsets"`
+	QfRateLimit       *ebpf.MapSpec `ebpf:"qf_rate_limits"`
+	QfRuleCount       *ebpf.MapSpec `ebpf:"qf_rule_count"`
+	QfRuleCounters    *ebpf.MapSpec `ebpf:"qf_rule_counters"`
+	QfRules           *ebpf.MapSpec `ebpf:"qf_rules"`
+	QfSuppressedCount *ebpf.MapSpec `ebpf:"qf_suppressed_count"`
 }
 
 // TcFilterVariableSpecs contains global variables before they are loaded into the kernel.
@@ -166,13 +174,15 @@ func (o *TcFilterObjects) Close() error {
 //
 // It can be passed to LoadTcFilterObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TcFilterMaps struct {
-	QfConfig       *ebpf.Map `ebpf:"qf_config"`
-	QfConntrack    *ebpf.Map `ebpf:"qf_conntrack"`
-	QfEvents       *ebpf.Map `ebpf:"qf_events"`
-	QfIpsets       *ebpf.Map `ebpf:"qf_ipsets"`
-	QfRuleCount    *ebpf.Map `ebpf:"qf_rule_count"`
-	QfRuleCounters *ebpf.Map `ebpf:"qf_rule_counters"`
-	QfRules        *ebpf.Map `ebpf:"qf_rules"`
+	QfConfig          *ebpf.Map `ebpf:"qf_config"`
+	QfConntrack       *ebpf.Map `ebpf:"qf_conntrack"`
+	QfEvents          *ebpf.Map `ebpf:"qf_events"`
+	QfIpsets          *ebpf.Map `ebpf:"qf_ipsets"`
+	QfRateLimit       *ebpf.Map `ebpf:"qf_rate_limits"`
+	QfRuleCount       *ebpf.Map `ebpf:"qf_rule_count"`
+	QfRuleCounters    *ebpf.Map `ebpf:"qf_rule_counters"`
+	QfRules           *ebpf.Map `ebpf:"qf_rules"`
+	QfSuppressedCount *ebpf.Map `ebpf:"qf_suppressed_count"`
 }
 
 func (m *TcFilterMaps) Close() error {
@@ -181,9 +191,11 @@ func (m *TcFilterMaps) Close() error {
 		m.QfConntrack,
 		m.QfEvents,
 		m.QfIpsets,
+		m.QfRateLimit,
 		m.QfRuleCount,
 		m.QfRuleCounters,
 		m.QfRules,
+		m.QfSuppressedCount,
 	)
 }
 

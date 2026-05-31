@@ -44,6 +44,37 @@ func ReadCounters(objs *TcFilterObjects) ([]RuleCounters, error) {
 	return out, nil
 }
 
+// ReadSuppressedCount returns the total suppressed-event count summed across all
+// CPUs since the last call to ResetSuppressedCount (or since agent start).
+func ReadSuppressedCount(objs *TcFilterObjects) (uint64, error) {
+	var perCPU []uint64
+	if err := objs.QfSuppressedCount.Lookup(uint32(0), &perCPU); err != nil {
+		return 0, fmt.Errorf("read suppressed_count: %w", err)
+	}
+	var total uint64
+	for _, c := range perCPU {
+		total += c
+	}
+	return total, nil
+}
+
+// ResetSuppressedCount zeroes the per-CPU suppressed-event counters.
+// Call after ReadSuppressedCount to implement delta reporting.
+func ResetSuppressedCount(objs *TcFilterObjects) error {
+	var perCPU []uint64
+	// Read to determine CPU count, then write zeroes.
+	if err := objs.QfSuppressedCount.Lookup(uint32(0), &perCPU); err != nil {
+		return fmt.Errorf("read suppressed_count for reset: %w", err)
+	}
+	for i := range perCPU {
+		perCPU[i] = 0
+	}
+	if err := objs.QfSuppressedCount.Put(uint32(0), perCPU); err != nil {
+		return fmt.Errorf("reset suppressed_count: %w", err)
+	}
+	return nil
+}
+
 // Loader convenience wrappers.
 
 func (l *Loader) ReadCounter(idx uint32) (RuleCounters, error) {
@@ -52,4 +83,12 @@ func (l *Loader) ReadCounter(idx uint32) (RuleCounters, error) {
 
 func (l *Loader) ReadCounters() ([]RuleCounters, error) {
 	return ReadCounters(&l.objs)
+}
+
+func (l *Loader) ReadSuppressedCount() (uint64, error) {
+	return ReadSuppressedCount(&l.objs)
+}
+
+func (l *Loader) ResetSuppressedCount() error {
+	return ResetSuppressedCount(&l.objs)
 }

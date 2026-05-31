@@ -11,11 +11,56 @@
 #include "conntrack.h"
 #include "matcher.h"
 
+/* Check token bucket for rule at rule_idx with rate_limit events/sec.
+ * Returns 1 (emit) or 0 (suppress). Per-CPU bucket: no locking needed. */
+static __always_inline int
+check_rate_limit(__u32 rule_idx, __u16 rate_limit)
+{
+	if (!rate_limit)
+		return 1;
+
+	struct token_bucket *tb = bpf_map_lookup_elem(&qf_rate_limits, &rule_idx);
+	if (!tb)
+		return 1; /* PERCPU_ARRAY lookup always succeeds for valid idx */
+
+	__u64 now = bpf_ktime_get_ns();
+
+	if (tb->last_ns == 0) {
+		/* First packet on this CPU: initialize to full bucket. */
+		tb->last_ns = now;
+		tb->tokens  = rate_limit;
+	} else {
+		__u64 elapsed = now - tb->last_ns;
+		/* Cap at 1 s to bound refill and prevent overflow. */
+		if (elapsed > 1000000000ULL)
+			elapsed = 1000000000ULL;
+		/* tokens_to_add = rate * elapsed_ns / 1e9 */
+		__u32 add = (__u32)(((__u64)rate_limit * elapsed) / 1000000000ULL);
+		__u32 refilled = tb->tokens + add;
+		tb->tokens  = refilled > (__u32)rate_limit ? (__u32)rate_limit : refilled;
+		tb->last_ns = now;
+	}
+
+	if (tb->tokens == 0) {
+		__u32 zero = 0;
+		__u64 *cnt = bpf_map_lookup_elem(&qf_suppressed_count, &zero);
+		if (cnt)
+			(*cnt)++;
+		return 0;
+	}
+	tb->tokens--;
+	return 1;
+}
+
 /* Emit a ring-buffer log event for the matched packet. */
 static __always_inline void
-emit_log(struct pkt_ctx *ctx, __u64 rule_id_hi, __u64 rule_id_lo,
-         __u8 action, __u8 ct_state)
+emit_log(struct pkt_ctx *ctx, __u32 rule_idx,
+         __u64 rule_id_hi, __u64 rule_id_lo,
+         __u8 action, __u8 ct_state, __u16 rate_limit)
 {
+	if (!check_rate_limit(rule_idx, rate_limit))
+		return;
+
 	struct log_event *ev = bpf_ringbuf_reserve(&qf_events, sizeof(*ev), 0);
 	if (!ev)
 		return;
@@ -51,12 +96,12 @@ bump_counter(__u32 idx, __u16 pkt_size)
 static __always_inline int
 apply_action(struct pkt_ctx *ctx, __u8 action,
              __u32 matched_idx, __u64 rule_id_hi, __u64 rule_id_lo,
-             __u8 log_enabled, __u8 ct_state)
+             __u8 log_enabled, __u8 ct_state, __u16 rate_limit)
 {
 	bump_counter(matched_idx, ctx->pkt_size);
 
 	if (log_enabled || action == ACTION_LOG || action == ACTION_DENY)
-		emit_log(ctx, rule_id_hi, rule_id_lo, action, ct_state);
+		emit_log(ctx, matched_idx, rule_id_hi, rule_id_lo, action, ct_state, rate_limit);
 
 	return (action == ACTION_DENY) ? TC_ACT_SHOT : TC_ACT_OK;
 }
@@ -94,7 +139,8 @@ run_datapath(struct __sk_buff *skb, __u8 direction)
 				ct_update(&ctx);
 			return apply_action(&ctx, action, matched_idx,
 			                    rule->rule_id_hi, rule->rule_id_lo,
-			                    rule->log_enabled, ct_state);
+			                    rule->log_enabled, ct_state,
+			                    rule->log_rate_limit_per_sec);
 		}
 		/* rule vanished between eval and fetch — treat as no-match */
 	}

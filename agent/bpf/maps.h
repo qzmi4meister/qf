@@ -55,6 +55,25 @@ struct {
 	__type(value, __u8);
 } qf_ipsets SEC(".maps");
 
+/* Per-rule token buckets for log-rate limiting. Per-CPU: no atomic ops needed.
+ * Key: rule index; value: struct token_bucket.
+ * Initialized lazily on first packet per CPU (last_ns==0 → full bucket). */
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, MAX_RULES);
+	__type(key, __u32);
+	__type(value, struct token_bucket);
+} qf_rate_limits SEC(".maps");
+
+/* Suppressed log-event count since last userspace readout. Single slot [0].
+ * Per-CPU; userspace aggregates and resets across CPUs when draining events. */
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, __u64);
+} qf_suppressed_count SEC(".maps");
+
 /* Global config. Slots:
  *   [0] flags: bit0=conntrack_enabled, bit1=flow_events_enabled
  *   [1] default ingress action (ACTION_*)
