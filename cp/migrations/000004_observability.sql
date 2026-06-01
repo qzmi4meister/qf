@@ -85,6 +85,7 @@ CREATE INDEX system_events_type      ON system_events (type, created_at);
 -- ── Seed initial partitions ───────────────────────────────────────────────
 
 -- Daily partitions for log_events: today + 30 days forward
+-- +goose StatementBegin
 DO $$
 DECLARE
     d      DATE;
@@ -103,8 +104,10 @@ BEGIN
     END LOOP;
 END;
 $$;
+-- +goose StatementEnd
 
 -- Daily partitions for flow_events: today + 30 days forward
+-- +goose StatementBegin
 DO $$
 DECLARE
     d      DATE;
@@ -123,8 +126,10 @@ BEGIN
     END LOOP;
 END;
 $$;
+-- +goose StatementEnd
 
 -- Weekly partitions for counter_snapshots: current ISO week + 8 weeks forward
+-- +goose StatementBegin
 DO $$
 DECLARE
     w      DATE;
@@ -144,6 +149,7 @@ BEGIN
     END LOOP;
 END;
 $$;
+-- +goose StatementEnd
 
 -- +goose Down
 

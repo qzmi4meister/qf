@@ -39,7 +39,7 @@ export default function Policies() {
     <Stack gap="md">
       <Group justify="space-between">
         <Title order={2}>Policies</Title>
-        <Button leftSection={<IconPlus size={14} />} onClick={() => navigate('/app/policies/new')}>
+        <Button leftSection={<IconPlus size={14} />} onClick={() => navigate('/policies/new')}>
           New policy
         </Button>
       </Group>
@@ -65,7 +65,7 @@ export default function Policies() {
           {filtered.map((p) => (
             <Table.Tr key={p.id}>
               <Table.Td>
-                <Anchor component={Link} to={`/app/policies/${p.id}`}>{p.name}</Anchor>
+                <Anchor component={Link} to={`/policies/${p.id}`}>{p.name}</Anchor>
               </Table.Td>
               <Table.Td>
                 <Badge size="sm" variant="outline">{p.priority}</Badge>

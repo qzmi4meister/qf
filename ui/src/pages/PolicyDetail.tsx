@@ -73,7 +73,7 @@ export default function PolicyDetail() {
       qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['policy', savedId] })
       notifications.show({ message: 'Policy saved', color: 'green' })
-      if (isNew) navigate(`/app/policies/${savedId}`)
+      if (isNew) navigate(`/policies/${savedId}`)
     },
     onError: () => notifications.show({ message: 'Save failed', color: 'red' }),
   })
@@ -125,7 +125,7 @@ export default function PolicyDetail() {
   return (
     <Stack gap="md">
       <Group>
-        <Anchor component={Link} to="/app/policies">Policies</Anchor>
+        <Anchor component={Link} to="/policies">Policies</Anchor>
         <Text c="dimmed">/</Text>
         <Title order={2}>{isNew ? 'New policy' : (policy?.name ?? '…')}</Title>
       </Group>

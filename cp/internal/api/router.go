@@ -108,6 +108,9 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Get("/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		jwtMW(http.HandlerFunc(authH.Me)).ServeHTTP(w, r)
 	})
+	r.Post("/auth/change-password", func(w http.ResponseWriter, r *http.Request) {
+		jwtMW(http.HandlerFunc(authH.ChangePassword)).ServeHTTP(w, r)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(authAny)

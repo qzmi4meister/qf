@@ -5,11 +5,18 @@ image:
   tag: ""  # defaults to Chart.AppVersion
   pullPolicy: IfNotPresent
 
+imagePullSecrets: []
+# - name: ghcr-secret
+
 service:
   type: ClusterIP
   httpPort: 8080
   grpcPort: 8443
   enrollPort: 8444
+  # NodePort values — only used when type: NodePort
+  httpNodePort: 0   # 0 = auto-assign
+  grpcNodePort: 0
+  enrollNodePort: 0
 
 ingress:
   enabled: false

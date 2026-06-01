@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/auth"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -213,6 +214,14 @@ func toHostResponse(h storegen.Host) HostResponse {
 }
 
 func tenantFromRequest(w http.ResponseWriter, r *http.Request) (pgtype.UUID, bool) {
+	// Prefer tenant ID from JWT claims (browser cookie auth).
+	if c := auth.ClaimsFromCtx(r.Context()); c != nil && c.TenantID != "" {
+		var u pgtype.UUID
+		if err := u.Scan(c.TenantID); err == nil {
+			return u, true
+		}
+	}
+	// Fall back to explicit header (API token clients).
 	raw := r.Header.Get("X-Tenant-ID")
 	if raw == "" {
 		apiError(w, http.StatusBadRequest, "X-Tenant-ID header required")

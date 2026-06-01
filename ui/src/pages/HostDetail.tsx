@@ -57,7 +57,7 @@ export default function HostDetail() {
   return (
     <Stack gap="md">
       <Group>
-        <Anchor component={Link} to="/app/hosts">Hosts</Anchor>
+        <Anchor component={Link} to="/hosts">Hosts</Anchor>
         <Text c="dimmed">/</Text>
         <Title order={2}>{host.hostname}</Title>
         <Badge color={statusColor(host.status)}>{host.status}</Badge>

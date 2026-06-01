@@ -10,11 +10,20 @@ spec:
     - port: {{ .Values.service.httpPort }}
       targetPort: http
       name: http
+      {{- if and (eq .Values.service.type "NodePort") (gt (int .Values.service.httpNodePort) 0) }}
+      nodePort: {{ .Values.service.httpNodePort }}
+      {{- end }}
     - port: {{ .Values.service.grpcPort }}
       targetPort: grpc
       name: grpc
+      {{- if and (eq .Values.service.type "NodePort") (gt (int .Values.service.grpcNodePort) 0) }}
+      nodePort: {{ .Values.service.grpcNodePort }}
+      {{- end }}
     - port: {{ .Values.service.enrollPort }}
       targetPort: enroll
       name: enroll
+      {{- if and (eq .Values.service.type "NodePort") (gt (int .Values.service.enrollNodePort) 0) }}
+      nodePort: {{ .Values.service.enrollNodePort }}
+      {{- end }}
   selector:
     {{- include "qf-cp.selectorLabels" . | nindent 4 }}

@@ -19,7 +19,7 @@ const col = createColumnHelper<Host>()
 const columns = [
   col.accessor('hostname', {
     header: 'Hostname',
-    cell: (i) => <Anchor component={Link} to={`/app/hosts/${i.row.original.id}`}>{i.getValue()}</Anchor>,
+    cell: (i) => <Anchor component={Link} to={`/hosts/${i.row.original.id}`}>{i.getValue()}</Anchor>,
   }),
   col.accessor('status', {
     header: 'Status',

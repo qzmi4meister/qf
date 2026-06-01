@@ -43,6 +43,21 @@ func main() {
 
 	diskBuf := grpcclient.NewDiskBuffer("")
 
+	// Initial enrollment: if PKI is absent and we have a token, enroll before connecting.
+	if _, err := os.Stat(cfg.PKIDir + "/bundle-signing.pub"); os.IsNotExist(err) {
+		if cfg.EnrollToken == "" {
+			slog.Error("PKI not found and no enroll token configured")
+			os.Exit(1)
+		}
+		slog.Info("agent: no PKI found, starting initial enrollment", "addr", cfg.EnrollEndpoint)
+		hostname, _ := os.Hostname()
+		if _, enrollErr := grpcclient.Enroll(ctx, cfg.EnrollEndpoint, cfg.EnrollToken, hostname, cfg.PKIDir); enrollErr != nil {
+			slog.Error("agent: initial enrollment failed", "err", enrollErr)
+			os.Exit(1)
+		}
+		slog.Info("agent: initial enrollment succeeded")
+	}
+
 	for {
 		bundleKey, err := loadBundleSigningKey(cfg.PKIDir + "/bundle-signing.pub")
 		if err != nil {
