@@ -8,12 +8,25 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/pki"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
+// RouterConfig holds dependencies for NewRouter.
+type RouterConfig struct {
+	Queries   *storegen.Queries
+	Tokens    *pki.TokenStore
+	JWTSecret []byte
+	TenantID  pgtype.UUID
+}
+
 // NewRouter builds the chi router with standard middleware and base routes.
-func NewRouter(queries *storegen.Queries, tokens *pki.TokenStore) *chi.Mux {
+func NewRouter(cfg RouterConfig) *chi.Mux {
+	queries := cfg.Queries
+	tokens := cfg.Tokens
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -24,17 +37,64 @@ func NewRouter(queries *storegen.Queries, tokens *pki.TokenStore) *chi.Mux {
 	r.Get("/healthz", handleHealthz)
 	r.Get("/metrics", handleMetrics)
 
-	r.Route("/hosts", func(r chi.Router) {
-		registerHosts(r, queries)
-		r.Route("/{id}", func(r chi.Router) {
-			registerEvents(r, queries)
+	// Auth endpoints — no JWT required
+	authH := auth.NewHandler(queries, cfg.JWTSecret, cfg.TenantID)
+	r.Post("/auth/login", authH.Login)
+	r.Post("/auth/logout", authH.Logout)
+	r.Post("/auth/refresh", authH.Refresh)
+
+	// Protected API — JWT or API token required
+	jwtMW := auth.JWTMiddleware(cfg.JWTSecret)
+	apiTokenMW := auth.APITokenMiddleware(queries, cfg.TenantID)
+	authAny := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Try JWT cookie/header first, then API token Bearer.
+			if c, _ := r.Cookie("qf_token"); c != nil {
+				jwtMW(next).ServeHTTP(w, r)
+				return
+			}
+			h := r.Header.Get("Authorization")
+			if len(h) > 7 && h[:7] == "Bearer " {
+				// Determine if it looks like a JWT (two dots) or opaque API token.
+				tok := h[7:]
+				dotCount := 0
+				for _, ch := range tok {
+					if ch == '.' {
+						dotCount++
+					}
+				}
+				if dotCount == 2 {
+					jwtMW(next).ServeHTTP(w, r)
+					return
+				}
+				apiTokenMW(next).ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 		})
+	}
+
+	r.Get("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		jwtMW(http.HandlerFunc(authH.Me)).ServeHTTP(w, r)
 	})
-	r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries) })
-	r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries) })
-	r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
-	r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries) })
-	r.Route("/audit-log", func(r chi.Router) { registerAuditLog(r, queries) })
+
+	r.Group(func(r chi.Router) {
+		r.Use(authAny)
+
+		r.Route("/hosts", func(r chi.Router) {
+			registerHosts(r, queries)
+			r.Route("/{id}", func(r chi.Router) {
+				registerEvents(r, queries)
+			})
+		})
+		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries) })
+		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries) })
+		r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
+		r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries) })
+		r.Route("/audit-log", func(r chi.Router) { registerAuditLog(r, queries) })
+		r.Route("/users", func(r chi.Router) { auth.RegisterUsers(r, queries, cfg.TenantID) })
+		r.Route("/api-tokens", func(r chi.Router) { auth.RegisterAPITokens(r, queries, cfg.TenantID) })
+	})
 
 	return r
 }

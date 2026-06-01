@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/qf/qf/cp/internal/agentsrv"
 	"github.com/qf/qf/cp/internal/api"
+	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/forwarder"
 	"github.com/qf/qf/cp/internal/ingest"
 	"github.com/qf/qf/cp/internal/metrics"
@@ -131,8 +133,31 @@ func run() error {
 	enrollSvc := pki.NewEnrollmentServer(ca, bundleSigner, tokenStore, queries, cfg.cpEndpoint)
 	qfv1.RegisterEnrollmentServiceServer(enrollSrv, enrollSvc)
 
+	// ── Auth bootstrap ────────────────────────────────────────────────────────
+	defaultTenant, err := store.EnsureDefaultTenant(ctx, queries)
+	if err != nil {
+		return fmt.Errorf("default tenant: %w", err)
+	}
+	if err := auth.EnsureAdminUser(ctx, queries, defaultTenant.ID); err != nil {
+		return fmt.Errorf("admin bootstrap: %w", err)
+	}
+
+	jwtSecret := []byte(envOr("QF_JWT_SECRET", ""))
+	if len(jwtSecret) == 0 {
+		slog.Warn("QF_JWT_SECRET not set — using ephemeral secret; tokens invalidated on restart")
+		jwtSecret = make([]byte, 32)
+		if _, err := rand.Read(jwtSecret); err != nil {
+			return fmt.Errorf("rand: %w", err)
+		}
+	}
+
 	// ── REST API ─────────────────────────────────────────────────────────────
-	router := api.NewRouter(queries, tokenStore)
+	router := api.NewRouter(api.RouterConfig{
+		Queries:   queries,
+		Tokens:    tokenStore,
+		JWTSecret: jwtSecret,
+		TenantID:  defaultTenant.ID,
+	})
 	httpSrv := &http.Server{
 		Addr:    cfg.httpAddr,
 		Handler: router,

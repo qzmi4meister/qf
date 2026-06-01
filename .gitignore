@@ -7,9 +7,9 @@ vendor/
 
 # bpf2go outputs are committed — CI uses them without re-generating.
 # Re-run `make generate` after changing BPF C source.
+# sqlc gen is also committed — run `sqlc generate` in cp/ after schema changes.
 proto/**/*.pb.go
 proto/**/*_grpc.pb.go
-cp/internal/store/gen/
 
 # BPF intermediate build artifacts (make bpf output dir)
 agent/bpf/.output/
