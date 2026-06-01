@@ -48,20 +48,24 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Get("/openapi.yaml", handleOpenAPI)
 	r.Get("/docs", handleSwaggerUI)
 
-	// Embedded UI — served at /app/*
+	// Embedded UI — served at /app/* with HSTS header.
 	uiHandler := embeddedui.FileServer()
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/app/", http.StatusFound)
 	})
-	r.Handle("/app", http.RedirectHandler("/app/", http.StatusFound))
-	r.Handle("/app/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/app")
-		uiHandler.ServeHTTP(w, r)
-	}))
+	r.Group(func(r chi.Router) {
+		r.Use(hstsMiddleware)
+		r.Handle("/app", http.RedirectHandler("/app/", http.StatusFound))
+		r.Handle("/app/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/app")
+			uiHandler.ServeHTTP(w, r)
+		}))
+	})
 
 	// Auth endpoints — no JWT required
 	authH := auth.NewHandler(queries, cfg.JWTSecret, cfg.TenantID)
-	r.Post("/auth/login", authH.Login)
+	loginRL := newLoginRateLimiter()
+	r.With(loginRL.Middleware).Post("/auth/login", authH.Login)
 	r.Post("/auth/logout", authH.Logout)
 	r.Post("/auth/refresh", authH.Refresh)
 	r.Get("/auth/oidc/enabled", auth.OIDCEnabled(cfg.OIDCEnabled))
@@ -165,6 +169,14 @@ window.onload = function() {
 func handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(swaggerUIHTML)) //nolint:errcheck
+}
+
+// hstsMiddleware sets Strict-Transport-Security for HTTPS enforcement.
+func hstsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // structuredLogger logs each request via slog.
