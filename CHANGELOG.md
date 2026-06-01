@@ -9,6 +9,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- P5-BENCH-02: Bundle fan-out bench — `cp/internal/agentsrv/bench_fanout_test.go`: 4 benchmarks sweeping concurrency 1/50/100/200 dispatcher goroutines across 1000 stub agents; `stubStream` fake implements `AgentService_StreamServer` (no gRPC transport, no DB); per-agent delivery latency measured from dispatch start to `Send()` call inside stub; reports p50/p95/p99/max in ms via `b.ReportMetric`; `make bench-fanout` runs locally (pure Go, no eBPF)
 - P5-BENCH-01: BPF datapath bench — `agent/internal/loader/bench_bpf_test.go`: 7 benchmarks (Baseline, HotPath_Established, ColdPath 8/32/64 LastMatch, ColdPath 8/64 NoMatch) using `prog.Benchmark(pkt, b.N, b.ResetTimer)` (kernel-measured CPU time via `BPF_PROG_TEST_RUN`); reports ns/pkt + pps via `b.ReportMetric`; helper signatures in `loader_test.go` widened from `*testing.T` to `testing.TB`; `make bench-bpf` runs via SSH on remote Linux with CAP_BPF
 
 ### Added (Phase 4)

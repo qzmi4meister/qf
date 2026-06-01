@@ -7,7 +7,7 @@ BPF_CFLAGS ?= -g -O2 -Wall -target bpf -D__TARGET_ARCH_$(BPF_ARCH)
 
 BUF ?= buf
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout clean
 
 all: generate build
 
@@ -42,6 +42,11 @@ ui-build: ui-install
 # Start Vite dev server (proxies API to localhost:8080).
 ui-dev:
 	cd ui && npm run dev
+
+# Bundle fan-out benchmark — pure Go, runs locally or on remote.
+# Reports p50/p95/p99/max per-agent delivery latency at concurrency 1/50/100/200.
+bench-fanout:
+	go test -bench=BenchmarkFanOut_ -benchmem -benchtime=10s -run=^$$ -count=1 ./cp/internal/agentsrv/ 2>&1
 
 # BPF datapath benchmarks — must run on Linux with CAP_BPF (SSH to remote).
 # -benchtime=50000x: b.N=50000 kernel iterations per bench; stable ns/pkt reading.
