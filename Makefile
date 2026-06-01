@@ -7,7 +7,7 @@ BPF_CFLAGS ?= -g -O2 -Wall -target bpf -D__TARGET_ARCH_$(BPF_ARCH)
 
 BUF ?= buf
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf clean
 
 all: generate build
 
@@ -42,6 +42,12 @@ ui-build: ui-install
 # Start Vite dev server (proxies API to localhost:8080).
 ui-dev:
 	cd ui && npm run dev
+
+# BPF datapath benchmarks — must run on Linux with CAP_BPF (SSH to remote).
+# -benchtime=50000x: b.N=50000 kernel iterations per bench; stable ns/pkt reading.
+# Requires CAP_BPF on remote; if EPERM, benchmarks self-skip with message.
+bench-bpf:
+	ssh qf 'cd /opt/qf && go test -bench=BenchmarkBPF_ -benchmem -benchtime=50000x -run=^$$ -count=3 ./agent/internal/loader/ 2>&1'
 
 clean:
 	$(MAKE) -C agent/bpf clean
