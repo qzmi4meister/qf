@@ -128,6 +128,7 @@ func run() error {
 	// ── Policy compiler + gRPC stream server ─────────────────────────────────
 	bundleBuilder := policy.NewBundleBuilder(queries, bundleSigner)
 	registry := agentsrv.NewStreamRegistry()
+	cascade := policy.NewCascadeRecompiler(queries, bundleBuilder, registry)
 
 	grpcSrv, err := agentsrv.NewMTLSServer(serverCert, ca, rc, queries, bundleBuilder, registry, version.Version, ing)
 	if err != nil {
@@ -180,6 +181,7 @@ func run() error {
 		OIDCEnabled: oidcCfg.Enabled(),
 		Hub:         hub,
 		Compiler:    policy.NewRulesetCompiler(queries),
+		Cascade:     cascade,
 	})
 	httpSrv := &http.Server{
 		Addr:              cfg.httpAddr,

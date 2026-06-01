@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -81,11 +82,12 @@ type updateRuleRequest struct {
 type policyHandler struct {
 	q        *storegen.Queries
 	compiler *polpkg.RulesetCompiler
+	cascade  *polpkg.CascadeRecompiler // nil = push disabled
 	tenantID pgtype.UUID
 }
 
-func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, tenantID pgtype.UUID) {
-	h := &policyHandler{q: q, compiler: compiler, tenantID: tenantID}
+func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, cascade *polpkg.CascadeRecompiler, tenantID pgtype.UUID) {
+	h := &policyHandler{q: q, compiler: compiler, cascade: cascade, tenantID: tenantID}
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Get("/{id}", h.get)
@@ -220,6 +222,7 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
+	h.dispatchCascade(r, policyUUID)
 	writeJSON(w, http.StatusOK, toPolicyResponse(policy))
 }
 
@@ -239,6 +242,7 @@ func (h *policyHandler) delete(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "delete policy: "+err.Error())
 		return
 	}
+	h.dispatchCascade(r, policyUUID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -259,6 +263,20 @@ func (h *policyHandler) listRules(w http.ResponseWriter, r *http.Request) {
 		resp = append(resp, toRuleResponse(rule))
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// dispatchCascade triggers a non-blocking policy recompile+push for all matching hosts.
+func (h *policyHandler) dispatchCascade(r *http.Request, policyID pgtype.UUID) {
+	if h.cascade == nil {
+		return
+	}
+	tenantStr := uuidToStr(h.tenantID)
+	policyStr := uuidToStr(policyID)
+	go func() {
+		if err := h.cascade.OnPolicyChanged(r.Context(), tenantStr, policyStr); err != nil {
+			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
+		}
+	}()
 }
 
 func (h *policyHandler) createRule(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +313,7 @@ func (h *policyHandler) createRule(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "create rule: "+err.Error())
 		return
 	}
+	h.dispatchCascade(r, policyUUID)
 	writeJSON(w, http.StatusCreated, toRuleResponse(rule))
 }
 
@@ -353,6 +372,7 @@ func (h *policyHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "update rule: "+err.Error())
 		return
 	}
+	h.dispatchCascade(r, policyUUID)
 	writeJSON(w, http.StatusOK, toRuleResponse(rule))
 }
 
@@ -374,6 +394,7 @@ func (h *policyHandler) deleteRule(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "delete rule: "+err.Error())
 		return
 	}
+	h.dispatchCascade(r, policyUUID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
