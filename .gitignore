@@ -17,6 +17,10 @@ agent/bpf/.output/
 # UI
 ui/node_modules/
 ui/dist/
+# Built UI assets embedded in CP (placeholder index.html is committed)
+cp/internal/embeddedui/dist/assets/
+cp/internal/embeddedui/dist/*.js
+cp/internal/embeddedui/dist/*.css
 
 # Secrets / local config
 *.env

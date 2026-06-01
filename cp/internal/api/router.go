@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/qf/qf/cp/internal/auth"
+	"github.com/qf/qf/cp/internal/embeddedui"
 	"github.com/qf/qf/cp/internal/pki"
-	"github.com/qf/qf/cp/internal/pubsub"
 	"github.com/qf/qf/cp/internal/policy"
+	"github.com/qf/qf/cp/internal/pubsub"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -42,6 +44,17 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 
 	r.Get("/healthz", handleHealthz)
 	r.Get("/metrics", handleMetrics)
+
+	// Embedded UI — served at /app/*
+	uiHandler := embeddedui.FileServer()
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/", http.StatusFound)
+	})
+	r.Handle("/app", http.RedirectHandler("/app/", http.StatusFound))
+	r.Handle("/app/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/app")
+		uiHandler.ServeHTTP(w, r)
+	}))
 
 	// Auth endpoints — no JWT required
 	authH := auth.NewHandler(queries, cfg.JWTSecret, cfg.TenantID)

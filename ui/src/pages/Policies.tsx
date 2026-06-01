@@ -1,0 +1,118 @@
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Stack, Title, Button, Table, Text, Anchor, Group, TextInput, Badge, ActionIcon,
+  Loader, Center, Modal,
+} from '@mantine/core'
+import { IconSearch, IconPlus, IconTrash } from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
+import { listPolicies, deletePolicy } from '../api/policies'
+
+export default function Policies() {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const { data: policies = [], isLoading } = useQuery({
+    queryKey: ['policies'],
+    queryFn: listPolicies,
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: deletePolicy,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['policies'] })
+      setDeleteId(null)
+      notifications.show({ message: 'Policy deleted', color: 'green' })
+    },
+  })
+
+  const filtered = policies.filter((p) =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  if (isLoading) return <Center h={200}><Loader /></Center>
+
+  return (
+    <Stack gap="md">
+      <Group justify="space-between">
+        <Title order={2}>Policies</Title>
+        <Button leftSection={<IconPlus size={14} />} onClick={() => navigate('/app/policies/new')}>
+          New policy
+        </Button>
+      </Group>
+
+      <TextInput
+        placeholder="Search…"
+        leftSection={<IconSearch size={14} />}
+        value={search}
+        onChange={(e) => setSearch(e.currentTarget.value)}
+      />
+
+      <Table highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Priority</Table.Th>
+            <Table.Th>Version</Table.Th>
+            <Table.Th>Updated</Table.Th>
+            <Table.Th />
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {filtered.map((p) => (
+            <Table.Tr key={p.id}>
+              <Table.Td>
+                <Anchor component={Link} to={`/app/policies/${p.id}`}>{p.name}</Anchor>
+              </Table.Td>
+              <Table.Td>
+                <Badge size="sm" variant="outline">{p.priority}</Badge>
+              </Table.Td>
+              <Table.Td>v{p.current_version}</Table.Td>
+              <Table.Td>{new Date(p.updated_at).toLocaleString()}</Table.Td>
+              <Table.Td>
+                <ActionIcon
+                  color="red"
+                  variant="subtle"
+                  onClick={() => setDeleteId(p.id)}
+                >
+                  <IconTrash size={14} />
+                </ActionIcon>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+          {filtered.length === 0 && (
+            <Table.Tr>
+              <Table.Td colSpan={5}>
+                <Text c="dimmed" ta="center" size="sm" py="md">No policies</Text>
+              </Table.Td>
+            </Table.Tr>
+          )}
+        </Table.Tbody>
+      </Table>
+
+      <Modal
+        opened={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        title="Delete policy"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>Delete this policy? This cannot be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button
+              color="red"
+              loading={deleteMut.isPending}
+              onClick={() => deleteId && deleteMut.mutate(deleteId)}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Stack>
+  )
+}
