@@ -101,6 +101,9 @@ func run() error {
 	if err != nil || len(masterKey) != 32 {
 		return fmt.Errorf("QF_MASTER_KEY must be 32-byte hex (64 chars)")
 	}
+	if isLowEntropy(masterKey) {
+		return fmt.Errorf("QF_MASTER_KEY has low entropy (all bytes identical); use 'openssl rand -hex 32' to generate")
+	}
 
 	ca, err := pki.LoadOrInit(cfg.pkiDir, masterKey)
 	if err != nil {
@@ -151,6 +154,9 @@ func run() error {
 		if _, err := rand.Read(jwtSecret); err != nil {
 			return fmt.Errorf("rand: %w", err)
 		}
+	} else if len(jwtSecret) < 32 {
+		slog.Warn("QF_JWT_SECRET is shorter than 32 bytes; use at least 32 random bytes for security",
+			"length", len(jwtSecret))
 	}
 
 	// ── OIDC (optional) ──────────────────────────────────────────────────────
@@ -260,6 +266,21 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// isLowEntropy returns true when all bytes in b are identical (e.g. all zeros).
+// Such keys are trivially weak and must not be used as QF_MASTER_KEY.
+func isLowEntropy(b []byte) bool {
+	if len(b) == 0 {
+		return true
+	}
+	first := b[0]
+	for _, v := range b[1:] {
+		if v != first {
+			return false
+		}
+	}
+	return true
 }
 
 func initLogger(level string) {

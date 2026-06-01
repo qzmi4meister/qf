@@ -50,6 +50,17 @@ func (c OIDCConfig) Enabled() bool {
 	return c.Issuer != ""
 }
 
+// String returns a safe representation of OIDCConfig with ClientSecret masked.
+// Prevents accidental secret leakage via fmt.Sprintf("%v", cfg) or slog attrs.
+func (c OIDCConfig) String() string {
+	secret := "<not set>"
+	if c.ClientSecret != "" {
+		secret = "<masked>"
+	}
+	return fmt.Sprintf("OIDCConfig{Issuer:%q ClientID:%q ClientSecret:%s RedirectURL:%q}",
+		c.Issuer, c.ClientID, secret, c.RedirectURL)
+}
+
 // OIDCHandler handles OIDC login redirect and callback.
 type OIDCHandler struct {
 	q        *storegen.Queries
