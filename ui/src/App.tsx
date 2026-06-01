@@ -35,7 +35,7 @@ const qc = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={qc}>
-      <MantineProvider>
+      <MantineProvider defaultColorScheme="auto">
         <ModalsProvider>
           <Notifications position="top-right" />
           <BrowserRouter basename="/app">

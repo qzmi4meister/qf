@@ -15,6 +15,9 @@ import {
   PasswordInput,
   Button,
   Alert,
+  ActionIcon,
+  useMantineColorScheme,
+  useComputedColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import {
@@ -31,6 +34,8 @@ import {
   IconLogout,
   IconUser,
   IconShieldLock,
+  IconSun,
+  IconMoon,
 } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { logout } from '../api/auth'
@@ -93,6 +98,8 @@ export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { setColorScheme } = useMantineColorScheme()
+  const computed = useComputedColorScheme('light')
 
   async function handleLogout() {
     await logout()
@@ -119,6 +126,16 @@ export default function Layout() {
             <Text size="sm" c="dimmed">Default</Text>
           </Group>
 
+          <Group gap="xs">
+            <ActionIcon
+              variant="subtle"
+              size="md"
+              onClick={() => setColorScheme(computed === 'dark' ? 'light' : 'dark')}
+              aria-label="Toggle color scheme"
+            >
+              {computed === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
+
           <Menu shadow="md" width={180}>
             <Menu.Target>
               <Avatar style={{ cursor: 'pointer' }} size="sm" radius="xl" color="blue">
@@ -141,6 +158,7 @@ export default function Layout() {
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
+          </Group>
         </Group>
       </AppShell.Header>
 

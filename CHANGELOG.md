@@ -8,6 +8,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-06-02
+
+### Added
+- Dark mode: toggle button (sun/moon icon) in header; persists to localStorage; respects OS `prefers-color-scheme` on first load; anti-FOUC inline script in `index.html`
+
 ## [0.6.2] — 2026-06-01
 
 ### Fixed
