@@ -330,6 +330,21 @@ func (q *Queries) UpdateUserLastLogin(ctx context.Context, id pgtype.UUID) error
 	return err
 }
 
+const updateUserOIDCSubject = `-- name: UpdateUserOIDCSubject :exec
+UPDATE users SET oidc_subject = $3 WHERE id = $1 AND tenant_id = $2
+`
+
+type UpdateUserOIDCSubjectParams struct {
+	ID          pgtype.UUID `db:"id" json:"id"`
+	TenantID    pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	OidcSubject *string     `db:"oidc_subject" json:"oidc_subject"`
+}
+
+func (q *Queries) UpdateUserOIDCSubject(ctx context.Context, arg UpdateUserOIDCSubjectParams) error {
+	_, err := q.db.Exec(ctx, updateUserOIDCSubject, arg.ID, arg.TenantID, arg.OidcSubject)
+	return err
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :one
 UPDATE users SET password_hash = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at
 `

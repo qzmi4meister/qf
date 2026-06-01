@@ -9,6 +9,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- P4-AUTH-05: OIDC flow — `cp/internal/auth/oidc.go`: `OIDCConfig` (Issuer/ClientID/ClientSecret/RedirectURL), `OIDCConfigFromEnv()` reads QF_OIDC_ISSUER/CLIENT_ID/CLIENT_SECRET; `NewOIDCHandler(ctx, q, secret, tenantID, cfg)` initialises go-oidc provider + verifier; `Login` → CSRF state cookie + redirect; `Callback` → code exchange → ID token verify → lookup/create user (new OIDC users get auditor role) → issue access+refresh cookies → redirect /app; `GET /auth/oidc/enabled` returns JSON; `UpdateUserOIDCSubject` sqlc query; RouterConfig.OIDCHandler+OIDCEnabled; main.go: OIDCConfigFromEnv + NewOIDCHandler wired
 - P4-AUTH-01..04,06: Auth & RBAC backend — `cp/migrations/000005_auth.sql`: `users`, `user_roles`, `api_tokens` tables; sqlc queries (`auth.sql`); `cp/internal/auth/`: `jwt.go` (HS256 access 15m + refresh 7d), `middleware.go` (JWTMiddleware cookie+Bearer, RequireRole), `apitoken.go` (APITokenMiddleware, sha256 hash), `bootstrap.go` (EnsureAdminUser from QF_ADMIN_EMAIL+QF_ADMIN_PASSWORD), `handlers.go` (Login/Logout/Refresh/Me), `users.go` (CRUD GET/POST/PATCH/DELETE /users + role endpoints, Admin-only mutate), `apitokens_handler.go` (GET/POST/DELETE /api-tokens, plain token returned once on create); `cp/internal/api/router.go`: RouterConfig{JWTSecret,TenantID}, auth routes public, all other routes behind authAny middleware; `cp/internal/store/tenant.go`: EnsureDefaultTenant; `main.go`: EnsureAdminUser + ephemeral QF_JWT_SECRET fallback
 
 ### Added

@@ -151,12 +151,24 @@ func run() error {
 		}
 	}
 
+	// ── OIDC (optional) ──────────────────────────────────────────────────────
+	oidcCfg := auth.OIDCConfigFromEnv()
+	oidcHandler, err := auth.NewOIDCHandler(ctx, queries, jwtSecret, defaultTenant.ID, oidcCfg)
+	if err != nil {
+		return fmt.Errorf("oidc init: %w", err)
+	}
+	if oidcCfg.Enabled() {
+		slog.Info("OIDC enabled", "issuer", oidcCfg.Issuer)
+	}
+
 	// ── REST API ─────────────────────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
-		Queries:   queries,
-		Tokens:    tokenStore,
-		JWTSecret: jwtSecret,
-		TenantID:  defaultTenant.ID,
+		Queries:     queries,
+		Tokens:      tokenStore,
+		JWTSecret:   jwtSecret,
+		TenantID:    defaultTenant.ID,
+		OIDCHandler: oidcHandler,
+		OIDCEnabled: oidcCfg.Enabled(),
 	})
 	httpSrv := &http.Server{
 		Addr:    cfg.httpAddr,

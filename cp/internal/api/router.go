@@ -16,10 +16,12 @@ import (
 
 // RouterConfig holds dependencies for NewRouter.
 type RouterConfig struct {
-	Queries   *storegen.Queries
-	Tokens    *pki.TokenStore
-	JWTSecret []byte
-	TenantID  pgtype.UUID
+	Queries    *storegen.Queries
+	Tokens     *pki.TokenStore
+	JWTSecret  []byte
+	TenantID   pgtype.UUID
+	OIDCHandler *auth.OIDCHandler // nil = OIDC disabled
+	OIDCEnabled bool
 }
 
 // NewRouter builds the chi router with standard middleware and base routes.
@@ -42,6 +44,11 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Post("/auth/login", authH.Login)
 	r.Post("/auth/logout", authH.Logout)
 	r.Post("/auth/refresh", authH.Refresh)
+	r.Get("/auth/oidc/enabled", auth.OIDCEnabled(cfg.OIDCEnabled))
+	if cfg.OIDCHandler != nil {
+		r.Get("/auth/oidc/login", cfg.OIDCHandler.Login)
+		r.Get("/auth/oidc/callback", cfg.OIDCHandler.Callback)
+	}
 
 	// Protected API — JWT or API token required
 	jwtMW := auth.JWTMiddleware(cfg.JWTSecret)

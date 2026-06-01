@@ -23,6 +23,9 @@ UPDATE users SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING *;
 -- name: UpdateUserLastLogin :exec
 UPDATE users SET last_login_at = NOW() WHERE id = $1;
 
+-- name: UpdateUserOIDCSubject :exec
+UPDATE users SET oidc_subject = $3 WHERE id = $1 AND tenant_id = $2;
+
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1 AND tenant_id = $2;
 
