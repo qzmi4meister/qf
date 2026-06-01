@@ -117,6 +117,7 @@ type Host struct {
 	Labels            []byte             `db:"labels" json:"labels"`
 	Status            string             `db:"status" json:"status"`
 	CurrentGeneration int32              `db:"current_generation" json:"current_generation"`
+	DesiredGeneration int32              `db:"desired_generation" json:"desired_generation"`
 	LastHeartbeatAt   pgtype.Timestamptz `db:"last_heartbeat_at" json:"last_heartbeat_at"`
 	AgentVersion      *string            `db:"agent_version" json:"agent_version"`
 	KernelVersion     *string            `db:"kernel_version" json:"kernel_version"`

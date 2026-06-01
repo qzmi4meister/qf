@@ -3,6 +3,7 @@ package loader
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -47,6 +48,9 @@ func Load(iface string) (*Loader, error) {
 	})
 	if err != nil {
 		l.objs.Close()
+		if isTCXUnsupported(err) {
+			return nil, fmt.Errorf("TCX not supported on %s (kernel ≥6.6 required; legacy TC fallback is planned for Phase 2): %w", iface, err)
+		}
 		return nil, fmt.Errorf("attach ingress tcx on %s: %w", iface, err)
 	}
 	l.links = append(l.links, ing)
@@ -61,11 +65,24 @@ func Load(iface string) (*Loader, error) {
 			lnk.Close()
 		}
 		l.objs.Close()
+		if isTCXUnsupported(err) {
+			return nil, fmt.Errorf("TCX not supported on %s (kernel ≥6.6 required; legacy TC fallback is planned for Phase 2): %w", iface, err)
+		}
 		return nil, fmt.Errorf("attach egress tcx on %s: %w", iface, err)
 	}
 	l.links = append(l.links, egr)
 
 	return l, nil
+}
+
+// isTCXUnsupported returns true when the TCX attach error indicates the kernel
+// does not support TCX (pre-6.6). Checked by error string because the exact
+// errno varies by kernel version.
+func isTCXUnsupported(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "not supported") ||
+		strings.Contains(s, "operation not supported") ||
+		strings.Contains(s, "no such file")
 }
 
 // Close detaches all TC programs and releases BPF resources.

@@ -97,6 +97,22 @@ func run() error {
 		}
 	}()
 
+	// Periodically mark hosts as stale when no heartbeat for 90s.
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				if err := queries.MarkStaleHosts(ctx); err != nil && ctx.Err() == nil {
+					slog.Warn("stale host sweep failed", "err", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	// ── PKI ───────────────────────────────────────────────────────────────────
 	masterKey, err := hex.DecodeString(cfg.masterKeyHex)
 	if err != nil || len(masterKey) != 32 {

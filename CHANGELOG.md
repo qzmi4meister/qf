@@ -8,6 +8,18 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-01
+
+### Fixed
+- REV-1.1: Offline policy sync — agents that reconnect after missed cascade pushes now receive the updated bundle. Added `desired_generation` column to `hosts`; cascade increments it in DB before dispatching; session catch-up check compares `hello.current_generation < desired_generation` (not `current_generation`); migration `000006_desired_generation.sql`
+- REV-1.3: Agent `Hello` message now sends `hostname`, `kernel_version` (from `/proc/sys/kernel/osrelease`), and `interfaces` list
+- REV-1.4: Cascade recompiler wired to `/objectgroups` (update/delete), `/default-policy` (put), and `/hosts/{id}` label patch; added `OnDefaultPolicyChanged` and `OnHostLabelsChanged` to `CascadeRecompiler`
+- REV-1.5: `EventBatcher.flush()` writes batch to `DiskBuffer` when gRPC send fails; added `SetDiskBuf` setter; events survive CP outage and replay on reconnect
+- REV-2.1: BPF conntrack: first packet of new connection now counted (`new_e.packets_fwd = 1; new_e.bytes_fwd = ctx->pkt_size` set at entry creation)
+- REV-2.2: CP background goroutine marks hosts `stale` every 30s when `last_heartbeat_at < NOW() - 90s`; `MarkStaleHosts` SQL query added
+- REV-2.3: Default host status in `POST /hosts` changed from `"pending"` (violates DB constraint) to `"enrolling"`
+- REV-1.2 (partial): `loader.go` returns clear error when TCX attach fails on kernels <6.6; full `clsact` fallback deferred to Phase 2
+
 ### Added
 - P5-SEC-04: TLS hardening CP HTTP — `http.Server`: ReadHeaderTimeout 10s, ReadTimeout 30s, IdleTimeout 120s, TLSConfig with MinVersion TLS 1.2 and 6 ECDHE-AES-GCM/CHACHA20 cipher suites (takes effect when ListenAndServeTLS used); HSTS middleware on `/app/*` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`); `loginRateLimiter` (in-process sliding window, 5 attempts/ip/min → 429) wired on `POST /auth/login` via `r.With()`; lazy GC of expired windows; tests: `TestLoginRateLimiter_{Allow,DifferentIPs,WindowReset}` (all pass)
 - P5-SEC-03: Secrets audit — (1) `QF_MASTER_KEY` entropy check at startup: `isLowEntropy()` detects all-bytes-identical keys (all-zero, all-FF, etc.) → fatal error with `openssl rand -hex 32` hint; (2) `QF_JWT_SECRET` min-length warn: `< 32` bytes → `slog.Warn` with byte count; (3) API token entropy: `crypto/rand` 32-byte hex already in place (verified); (4) OIDC client secret masking: `OIDCConfig.String()` added → `fmt.Sprintf("%v", cfg)` and slog struct attrs emit `<masked>` not raw secret; tests: `TestIsLowEntropy` (7 subtests, cp/cmd/qf-cp), `TestOIDCConfig_String_{MasksSecret,NoSecret,ZeroValue}` (cp/internal/auth)

@@ -35,5 +35,14 @@ WHERE id = $1 AND tenant_id = $2;
 UPDATE hosts SET current_generation = $3, updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2;
 
+-- name: IncrementHostDesiredGeneration :exec
+UPDATE hosts SET desired_generation = desired_generation + 1, updated_at = NOW()
+WHERE id = $1 AND tenant_id = $2;
+
+-- name: MarkStaleHosts :exec
+UPDATE hosts SET status = 'stale', updated_at = NOW()
+WHERE status = 'active'
+  AND last_heartbeat_at < NOW() - INTERVAL '90 seconds';
+
 -- name: DeleteHost :exec
 DELETE FROM hosts WHERE id = $1 AND tenant_id = $2;

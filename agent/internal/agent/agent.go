@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,9 +138,25 @@ func (a *Agent) runSession(ctx context.Context, c *grpcclient.Client, cfg RunFul
 		currentGen = ar.Generation
 	}
 
+	hostname, _ := os.Hostname()
+	kernelBytes, _ := os.ReadFile("/proc/sys/kernel/osrelease")
+	kernelVer := strings.TrimSpace(string(kernelBytes))
+
+	netIfaces, _ := net.Interfaces()
+	ifaceInfos := make([]*qfv1.InterfaceInfo, 0, len(netIfaces))
+	for _, iface := range netIfaces {
+		ifaceInfos = append(ifaceInfos, &qfv1.InterfaceInfo{
+			Name:       iface.Name,
+			AttachMode: qfv1.AttachMode_ATTACH_MODE_TCX,
+		})
+	}
+
 	hs, err := grpcclient.Handshake(stream, &qfv1.Hello{
 		AgentVersion:      version.Version,
 		CurrentGeneration: currentGen,
+		Hostname:          hostname,
+		KernelVersion:     kernelVer,
+		Interfaces:        ifaceInfos,
 	})
 	if err != nil {
 		return err
@@ -186,6 +204,9 @@ func (a *Agent) runSession(ctx context.Context, c *grpcclient.Client, cfg RunFul
 
 	hb := grpcclient.NewHeartbeatSender(stream, genFn, nil, 0)
 	eb := grpcclient.NewEventBatcher(stream, er, a.ldr, 0, 0)
+	if cfg.DiskBuf != nil {
+		eb.SetDiskBuf(cfg.DiskBuf)
+	}
 	cp := grpcclient.NewCounterPoller(stream, a.ldr, a.policy, 0)
 	fc := grpcclient.NewFlowEventCollector(stream, a.ldr, 0)
 	cr := grpcclient.NewCertRotator(cfg.GRPC.CertFile, cfg.GRPC.KeyFile, stream.Send)

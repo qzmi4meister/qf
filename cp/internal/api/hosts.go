@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/qf/qf/cp/internal/auth"
+	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -39,11 +42,12 @@ type patchHostRequest struct {
 }
 
 type hostHandler struct {
-	q *storegen.Queries
+	q       *storegen.Queries
+	cascade *policy.CascadeRecompiler
 }
 
-func registerHosts(r chi.Router, q *storegen.Queries) {
-	h := &hostHandler{q: q}
+func registerHosts(r chi.Router, q *storegen.Queries, cascade *policy.CascadeRecompiler) {
+	h := &hostHandler{q: q, cascade: cascade}
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Get("/{id}", h.get)
@@ -81,7 +85,7 @@ func (h *hostHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Status == "" {
-		req.Status = "pending"
+		req.Status = "enrolling"
 	}
 	labelsJSON, err := json.Marshal(labelsOrEmpty(req.Labels))
 	if err != nil {
@@ -152,6 +156,15 @@ func (h *hostHandler) patch(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			apiError(w, http.StatusInternalServerError, "update labels: "+err.Error())
 			return
+		}
+		if h.cascade != nil {
+			tenantStr := uuidToStr(tenantUUID)
+			hostStr := uuidToStr(hostUUID)
+			go func() {
+				if err := h.cascade.OnHostLabelsChanged(context.Background(), tenantStr, hostStr); err != nil {
+					slog.Warn("cascade: host labels push failed", "host", hostStr, "err", err)
+				}
+			}()
 		}
 	}
 

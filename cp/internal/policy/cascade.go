@@ -55,6 +55,31 @@ func (cr *CascadeRecompiler) OnObjectGroupChanged(ctx context.Context, tenantID,
 	return cr.recompileAndDispatch(ctx, tenantID, hostIDs)
 }
 
+// OnDefaultPolicyChanged recompiles bundles for all hosts of the tenant.
+func (cr *CascadeRecompiler) OnDefaultPolicyChanged(ctx context.Context, tenantID string) error {
+	var tenantUUID pgtype.UUID
+	if err := tenantUUID.Scan(tenantID); err != nil {
+		return err
+	}
+	hosts, err := cr.queries.ListHosts(ctx, tenantUUID)
+	if err != nil {
+		return fmt.Errorf("cascade: list hosts: %w", err)
+	}
+	hostIDs := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		hostIDs = append(hostIDs, pgUUIDToStr(h.ID))
+	}
+	slog.Info("cascade: default policy changed", "hosts", len(hostIDs))
+	return cr.recompileAndDispatch(ctx, tenantID, hostIDs)
+}
+
+// OnHostLabelsChanged recompiles the bundle for the specific host whose
+// labels changed (selector matching may now include/exclude different policies).
+func (cr *CascadeRecompiler) OnHostLabelsChanged(ctx context.Context, tenantID, hostID string) error {
+	slog.Info("cascade: host labels changed", "host", hostID)
+	return cr.recompileAndDispatch(ctx, tenantID, []string{hostID})
+}
+
 // OnPolicyChanged recompiles bundles for all hosts matching policy's selector.
 func (cr *CascadeRecompiler) OnPolicyChanged(ctx context.Context, tenantID, policyID string) error {
 	var tenantUUID, policyUUID pgtype.UUID
@@ -144,9 +169,21 @@ func (cr *CascadeRecompiler) affectedHosts(ctx context.Context, tenantID, ogID s
 }
 
 // recompileAndDispatch builds a new bundle for each host and dispatches it.
+// It also increments desired_generation in DB so offline agents catch up on reconnect.
 func (cr *CascadeRecompiler) recompileAndDispatch(ctx context.Context, tenantID string, hostIDs []string) error {
 	var errs []error
 	for _, hostID := range hostIDs {
+		// Bump desired_generation before dispatch so offline agents catch up on reconnect.
+		var hostUUID, tenantUUID pgtype.UUID
+		if err := hostUUID.Scan(hostID); err == nil {
+			if err := tenantUUID.Scan(tenantID); err == nil {
+				_ = cr.queries.IncrementHostDesiredGeneration(ctx, storegen.IncrementHostDesiredGenerationParams{
+					ID:       hostUUID,
+					TenantID: tenantUUID,
+				})
+			}
+		}
+
 		bundle, err := cr.builder.GetBundle(ctx, tenantID, hostID)
 		if err != nil {
 			slog.Error("cascade: build bundle failed", "host", hostID, "err", err)

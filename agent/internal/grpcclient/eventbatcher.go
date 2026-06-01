@@ -26,13 +26,20 @@ const (
 //   - batch reaches batchSize events (configurable via SetBatchSize)
 //   - maxAgeMs elapses since the last flush (configurable via SetMaxAgeMs)
 type EventBatcher struct {
-	stream qfv1.AgentService_StreamClient
-	reader *loader.EventReader
-	ldr    *loader.Loader // nil → skip suppressed-count read/reset
+	stream  qfv1.AgentService_StreamClient
+	reader  *loader.EventReader
+	ldr     *loader.Loader // nil → skip suppressed-count read/reset
+	diskBuf *DiskBuffer    // nil → no disk buffering on send failure
 
 	mu        sync.RWMutex
 	batchSize uint32
 	maxAgeMs  uint32
+}
+
+// SetDiskBuf wires a DiskBuffer so that batches are persisted locally when
+// the gRPC stream send fails (e.g. CP unreachable).
+func (b *EventBatcher) SetDiskBuf(db *DiskBuffer) {
+	b.diskBuf = db
 }
 
 // NewEventBatcher creates an EventBatcher.
@@ -135,14 +142,18 @@ func (b *EventBatcher) Run(ctx context.Context) error {
 			suppressed, _ = b.ldr.ReadSuppressedCount()
 			_ = b.ldr.ResetSuppressedCount()
 		}
-		err := b.stream.Send(&qfv1.AgentMessage{
+		msg := &qfv1.AgentMessage{
 			Payload: &qfv1.AgentMessage_LogEvents{
 				LogEvents: &qfv1.LogEvents{
 					Events:          batch,
 					SuppressedCount: suppressed,
 				},
 			},
-		})
+		}
+		err := b.stream.Send(msg)
+		if err != nil && b.diskBuf != nil {
+			_ = b.diskBuf.Write(msg)
+		}
 		batch = batch[:0]
 		return err
 	}

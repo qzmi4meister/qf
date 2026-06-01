@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -23,11 +26,12 @@ type putDefaultPolicyRequest struct {
 }
 
 type dpHandler struct {
-	q *storegen.Queries
+	q       *storegen.Queries
+	cascade *policy.CascadeRecompiler
 }
 
-func registerDefaultPolicy(r chi.Router, q *storegen.Queries) {
-	h := &dpHandler{q: q}
+func registerDefaultPolicy(r chi.Router, q *storegen.Queries, cascade *policy.CascadeRecompiler) {
+	h := &dpHandler{q: q, cascade: cascade}
 	r.Get("/", h.get)
 	r.Put("/", h.put)
 }
@@ -68,6 +72,14 @@ func (h *dpHandler) put(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "upsert default policy: "+err.Error())
 		return
+	}
+	if h.cascade != nil {
+		tenantStr := uuidToStr(tenantUUID)
+		go func() {
+			if err := h.cascade.OnDefaultPolicyChanged(context.Background(), tenantStr); err != nil {
+				slog.Warn("cascade: default policy push failed", "err", err)
+			}
+		}()
 	}
 	writeJSON(w, http.StatusOK, toDPResponse(dp))
 }

@@ -160,7 +160,9 @@ ct_update(struct pkt_ctx *ctx)
 		return 0;
 
 	struct ct_entry new_e = {};
-	new_e.last_seen_ns = now;
+	new_e.last_seen_ns  = now;
+	new_e.packets_fwd   = 1;
+	new_e.bytes_fwd     = ctx->pkt_size;
 	if (ctx->proto == PROTO_TCP) {
 		__u8 ts = tcp_fsm(TCP_CS_NONE, ctx->tcp_flags, is_reply);
 		new_e.tcp_state = ts;

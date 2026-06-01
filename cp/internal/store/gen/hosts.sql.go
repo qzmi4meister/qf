@@ -14,7 +14,7 @@ import (
 const createHost = `-- name: CreateHost :one
 INSERT INTO hosts (tenant_id, hostname, labels, status)
 VALUES ($1, $2, $3, $4)
-RETURNING id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
+RETURNING id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
 `
 
 type CreateHostParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) CreateHost(ctx context.Context, arg CreateHostParams) (Host, e
 		&i.Labels,
 		&i.Status,
 		&i.CurrentGeneration,
+		&i.DesiredGeneration,
 		&i.LastHeartbeatAt,
 		&i.AgentVersion,
 		&i.KernelVersion,
@@ -64,7 +65,7 @@ func (q *Queries) DeleteHost(ctx context.Context, arg DeleteHostParams) error {
 }
 
 const getHost = `-- name: GetHost :one
-SELECT id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE id = $1 AND tenant_id = $2
+SELECT id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE id = $1 AND tenant_id = $2
 `
 
 type GetHostParams struct {
@@ -82,6 +83,7 @@ func (q *Queries) GetHost(ctx context.Context, arg GetHostParams) (Host, error) 
 		&i.Labels,
 		&i.Status,
 		&i.CurrentGeneration,
+		&i.DesiredGeneration,
 		&i.LastHeartbeatAt,
 		&i.AgentVersion,
 		&i.KernelVersion,
@@ -93,7 +95,7 @@ func (q *Queries) GetHost(ctx context.Context, arg GetHostParams) (Host, error) 
 }
 
 const listHosts = `-- name: ListHosts :many
-SELECT id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE tenant_id = $1 ORDER BY created_at DESC
+SELECT id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE tenant_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListHosts(ctx context.Context, tenantID pgtype.UUID) ([]Host, error) {
@@ -130,7 +132,7 @@ func (q *Queries) ListHosts(ctx context.Context, tenantID pgtype.UUID) ([]Host, 
 }
 
 const listHostsByStatus = `-- name: ListHostsByStatus :many
-SELECT id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC
+SELECT id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at FROM hosts WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC
 `
 
 type ListHostsByStatusParams struct {
@@ -219,7 +221,7 @@ func (q *Queries) UpdateHostHeartbeat(ctx context.Context, arg UpdateHostHeartbe
 const updateHostLabels = `-- name: UpdateHostLabels :one
 UPDATE hosts SET labels = $3, updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
+RETURNING id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
 `
 
 type UpdateHostLabelsParams struct {
@@ -238,6 +240,7 @@ func (q *Queries) UpdateHostLabels(ctx context.Context, arg UpdateHostLabelsPara
 		&i.Labels,
 		&i.Status,
 		&i.CurrentGeneration,
+		&i.DesiredGeneration,
 		&i.LastHeartbeatAt,
 		&i.AgentVersion,
 		&i.KernelVersion,
@@ -251,7 +254,7 @@ func (q *Queries) UpdateHostLabels(ctx context.Context, arg UpdateHostLabelsPara
 const updateHostStatus = `-- name: UpdateHostStatus :one
 UPDATE hosts SET status = $3, updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
+RETURNING id, tenant_id, hostname, labels, status, current_generation, desired_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at
 `
 
 type UpdateHostStatusParams struct {
@@ -270,6 +273,7 @@ func (q *Queries) UpdateHostStatus(ctx context.Context, arg UpdateHostStatusPara
 		&i.Labels,
 		&i.Status,
 		&i.CurrentGeneration,
+		&i.DesiredGeneration,
 		&i.LastHeartbeatAt,
 		&i.AgentVersion,
 		&i.KernelVersion,
@@ -278,4 +282,30 @@ func (q *Queries) UpdateHostStatus(ctx context.Context, arg UpdateHostStatusPara
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const incrementHostDesiredGeneration = `-- name: IncrementHostDesiredGeneration :exec
+UPDATE hosts SET desired_generation = desired_generation + 1, updated_at = NOW()
+WHERE id = $1 AND tenant_id = $2
+`
+
+type IncrementHostDesiredGenerationParams struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) IncrementHostDesiredGeneration(ctx context.Context, arg IncrementHostDesiredGenerationParams) error {
+	_, err := q.db.Exec(ctx, incrementHostDesiredGeneration, arg.ID, arg.TenantID)
+	return err
+}
+
+const markStaleHosts = `-- name: MarkStaleHosts :exec
+UPDATE hosts SET status = 'stale', updated_at = NOW()
+WHERE status = 'active'
+  AND last_heartbeat_at < NOW() - INTERVAL '90 seconds'
+`
+
+func (q *Queries) MarkStaleHosts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, markStaleHosts)
+	return err
 }

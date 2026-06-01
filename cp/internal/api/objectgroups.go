@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -32,16 +35,28 @@ type updateObjectGroupRequest struct {
 }
 
 type ogHandler struct {
-	q *storegen.Queries
+	q       *storegen.Queries
+	cascade *policy.CascadeRecompiler
 }
 
-func registerObjectGroups(r chi.Router, q *storegen.Queries) {
-	h := &ogHandler{q: q}
+func registerObjectGroups(r chi.Router, q *storegen.Queries, cascade *policy.CascadeRecompiler) {
+	h := &ogHandler{q: q, cascade: cascade}
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Get("/{id}", h.get)
 	r.Put("/{id}", h.update)
 	r.Delete("/{id}", h.delete)
+}
+
+func (h *ogHandler) dispatchCascade(tenantID, ogID string) {
+	if h.cascade == nil {
+		return
+	}
+	go func() {
+		if err := h.cascade.OnObjectGroupChanged(context.Background(), tenantID, ogID); err != nil {
+			slog.Warn("cascade: objectgroup push failed", "og", ogID, "err", err)
+		}
+	}()
 }
 
 func (h *ogHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +160,7 @@ func (h *ogHandler) update(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "update objectgroup: "+err.Error())
 		return
 	}
+	h.dispatchCascade(uuidToStr(tenantUUID), uuidToStr(ogUUID))
 	writeJSON(w, http.StatusOK, toOGResponse(og))
 }
 
@@ -164,6 +180,7 @@ func (h *ogHandler) delete(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "delete objectgroup: "+err.Error())
 		return
 	}
+	h.dispatchCascade(uuidToStr(tenantUUID), uuidToStr(ogUUID))
 	w.WriteHeader(http.StatusNoContent)
 }
 

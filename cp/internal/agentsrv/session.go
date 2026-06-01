@@ -67,6 +67,7 @@ func (s *AgentServer) Stream(stream qfv1.AgentService_StreamServer) error {
 	}
 
 	serverGen := int64(host.CurrentGeneration)
+	desiredGen := int64(host.DesiredGeneration)
 
 	// ── Welcome ──────────────────────────────────────────────────────────────
 	if err := stream.Send(&qfv1.ServerMessage{
@@ -83,7 +84,9 @@ func (s *AgentServer) Stream(stream qfv1.AgentService_StreamServer) error {
 	}
 
 	// ── Push bundle if agent is behind ───────────────────────────────────────
-	if hello.CurrentGeneration < serverGen && s.bundles != nil {
+	// Use desiredGen (not serverGen) so offline agents that missed cascade pushes
+	// also receive the bundle on reconnect.
+	if hello.CurrentGeneration < desiredGen && s.bundles != nil {
 		bundle, err := s.bundles.GetBundle(ctx, id.TenantID, id.HostID)
 		if err != nil {
 			slog.Warn("agentsrv: failed to get bundle for catch-up",

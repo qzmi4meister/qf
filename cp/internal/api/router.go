@@ -117,15 +117,15 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 		r.Use(authAny)
 
 		r.Route("/hosts", func(r chi.Router) {
-			registerHosts(r, queries)
+			registerHosts(r, queries, cfg.Cascade)
 			r.Route("/{id}", func(r chi.Router) {
 				registerEvents(r, queries, cfg.Hub)
 			})
 		})
 		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries, cfg.Compiler, cfg.Cascade, cfg.TenantID) })
-		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries) })
+		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries, cfg.Cascade) })
 		r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
-		r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries) })
+		r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries, cfg.Cascade) })
 		r.Route("/audit-log", func(r chi.Router) { registerAuditLog(r, queries) })
 		r.Route("/users", func(r chi.Router) { auth.RegisterUsers(r, queries, cfg.TenantID) })
 		r.Route("/api-tokens", func(r chi.Router) { auth.RegisterAPITokens(r, queries, cfg.TenantID) })
