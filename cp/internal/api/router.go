@@ -16,6 +16,7 @@ import (
 	"github.com/qf/qf/cp/internal/policy"
 	"github.com/qf/qf/cp/internal/pubsub"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
+	"github.com/qf/qf/docs"
 )
 
 // RouterConfig holds dependencies for NewRouter.
@@ -44,6 +45,8 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 
 	r.Get("/healthz", handleHealthz)
 	r.Get("/metrics", handleMetrics)
+	r.Get("/openapi.yaml", handleOpenAPI)
+	r.Get("/docs", handleSwaggerUI)
 
 	// Embedded UI — served at /app/*
 	uiHandler := embeddedui.FileServer()
@@ -126,6 +129,42 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Write(docs.OpenAPISpec) //nolint:errcheck
+}
+
+const swaggerUIHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <title>qf API</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+<script>
+window.onload = function() {
+  SwaggerUIBundle({
+    url: "/openapi.yaml",
+    dom_id: "#swagger-ui",
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+    layout: "BaseLayout",
+    tryItOutEnabled: true,
+  });
+};
+</script>
+</body>
+</html>`
+
+func handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(swaggerUIHTML)) //nolint:errcheck
 }
 
 // structuredLogger logs each request via slog.
