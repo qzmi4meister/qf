@@ -7,7 +7,7 @@ BPF_CFLAGS ?= -g -O2 -Wall -target bpf -D__TARGET_ARCH_$(BPF_ARCH)
 
 BUF ?= buf
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest clean
 
 all: generate build
 
@@ -42,6 +42,11 @@ ui-build: ui-install
 # Start Vite dev server (proxies API to localhost:8080).
 ui-dev:
 	cd ui && npm run dev
+
+# Event ingest benchmark — requires PostgreSQL; set QF_BENCH_DSN on remote host.
+# Benchmarks self-skip if QF_BENCH_DSN is not set.
+bench-ingest:
+	ssh qf 'cd /opt/qf && go test -bench=BenchmarkIngest -benchmem -benchtime=30s -run=^$$ -count=1 ./cp/internal/ingest/ 2>&1'
 
 # Bundle fan-out benchmark — pure Go, runs locally or on remote.
 # Reports p50/p95/p99/max per-agent delivery latency at concurrency 1/50/100/200.
