@@ -7,11 +7,12 @@ BPF_CFLAGS ?= -g -O2 -Wall -target bpf -D__TARGET_ARCH_$(BPF_ARCH)
 
 BUF ?= buf
 
-# Packaging
+# Packaging / images
 QF_VERSION := $(shell grep -oP '"[^"]+"' version/version.go | tr -d '"')
 PKG_ARCH   := $(shell go env GOARCH)
+QF_IMAGE   ?= localhost/qf-cp
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent docker-cp clean
 
 all: generate build
 
@@ -67,6 +68,17 @@ bench-conntrack:
 # Requires CAP_BPF on remote; if EPERM, benchmarks self-skip with message.
 bench-bpf:
 	ssh qf 'cd /opt/qf && go test -bench=BenchmarkBPF_ -benchmem -benchtime=50000x -run=^$$ -count=3 ./agent/internal/loader/ 2>&1'
+
+# Build multi-arch CP container image via podman (amd64 + arm64).
+# Produces a local manifest list at $(QF_IMAGE):$(QF_VERSION).
+# Requires: podman with QEMU binfmt support for cross-arch.
+# To push: podman manifest push --all $(QF_IMAGE):$(QF_VERSION) <registry>/qf-cp:$(QF_VERSION)
+docker-cp:
+	podman build \
+		--platform linux/amd64,linux/arm64 \
+		--manifest $(QF_IMAGE):$(QF_VERSION) \
+		-f deploy/Dockerfile.cp \
+		.
 
 # Package qf-agent as .deb and .rpm via nfpm.
 # Requires: nfpm (https://nfpm.goreleaser.com/), go build must run first.
