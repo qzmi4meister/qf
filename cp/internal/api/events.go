@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/pubsub"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -15,15 +18,92 @@ const defaultLimit = 500
 const maxLimit = 1000
 
 type eventHandler struct {
-	q *storegen.Queries
+	q   *storegen.Queries
+	hub *pubsub.Hub // nil = SSE not available
 }
 
-func registerEvents(r chi.Router, q *storegen.Queries) {
-	h := &eventHandler{q: q}
+func registerEvents(r chi.Router, q *storegen.Queries, hub *pubsub.Hub) {
+	h := &eventHandler{q: q, hub: hub}
 	r.Get("/events", h.listEvents)
+	r.Get("/events/stream", h.streamEvents)
 	r.Get("/flows", h.listFlows)
 	r.Get("/counters", h.listCounters)
 	r.Get("/counters/latest", h.latestCounters)
+}
+
+// GET /hosts/{id}/events/stream — SSE live tail
+func (h *eventHandler) streamEvents(w http.ResponseWriter, r *http.Request) {
+	if h.hub == nil {
+		http.Error(w, "SSE not available", http.StatusServiceUnavailable)
+		return
+	}
+	tenantUUID, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	hostUUID, ok := uuidParam(w, r, "id")
+	if !ok {
+		return
+	}
+
+	// If Last-Event-ID is set, flush history from DB first.
+	lastEventID := r.Header.Get("Last-Event-ID")
+	if lastEventID != "" {
+		since, err := time.Parse(time.RFC3339Nano, lastEventID)
+		if err == nil {
+			p := storegen.ListLogEventsParams{
+				TenantID: tenantUUID,
+				HostID:   hostUUID,
+				Column3:  pgtype.Timestamptz{Time: since, Valid: true},
+				Column4:  pgtype.Timestamptz{},
+				Limit:    500,
+			}
+			rows, err := h.q.ListLogEvents(r.Context(), p)
+			if err == nil {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("X-Accel-Buffering", "no")
+				flusher, _ := w.(http.Flusher)
+				for _, row := range rows {
+					b, _ := json.Marshal(toSingleLogEvent(row))
+					id := ""
+					if row.CreatedAt.Valid {
+						id = row.CreatedAt.Time.UTC().Format(time.RFC3339Nano)
+					}
+					fmt.Fprintf(w, "id: %s\nevent: log_event\ndata: %s\n\n", id, b)
+					if flusher != nil {
+						flusher.Flush()
+					}
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	hostIDStr := uuidToStr(hostUUID)
+	ch, cancel := h.hub.Subscribe(hostIDStr, 64)
+	defer cancel()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case msg, open := <-ch:
+			if !open {
+				return
+			}
+			fmt.Fprintf(w, "id: %s\nevent: log_event\ndata: %s\n\n", msg.ID, msg.Data)
+			flusher.Flush()
+		}
+	}
 }
 
 // GET /hosts/{id}/events
@@ -175,6 +255,33 @@ type CounterResponse struct {
 }
 
 // ── converters ────────────────────────────────────────────────────────────
+
+func toSingleLogEvent(r storegen.ListLogEventsRow) LogEventResponse {
+	ev := LogEventResponse{
+		ID:         uuidToStr(r.ID),
+		HostID:     uuidToStr(r.HostID),
+		RuleID:     uuidToStr(r.RuleID),
+		PolicyID:   uuidToStr(r.PolicyID),
+		Direction:  r.Direction,
+		Action:     r.Action,
+		Protocol:   r.Protocol,
+		SrcPort:    r.SrcPort,
+		DstPort:    r.DstPort,
+		PacketSize: r.PacketSize,
+		TCPFlags:   r.TcpFlags,
+		CTState:    r.CtState,
+	}
+	if r.SrcIp != nil {
+		ev.SrcIP = addrToStr(r.SrcIp)
+	}
+	if r.DstIp != nil {
+		ev.DstIP = addrToStr(r.DstIp)
+	}
+	if r.CreatedAt.Valid {
+		ev.CreatedAt = r.CreatedAt.Time
+	}
+	return ev
+}
 
 func toLogEventResponses(rows []storegen.ListLogEventsRow) []LogEventResponse {
 	out := make([]LogEventResponse, 0, len(rows))

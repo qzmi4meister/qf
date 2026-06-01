@@ -6,6 +6,7 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/qf/qf/cp/internal/forwarder"
 	"github.com/qf/qf/cp/internal/metrics"
+	"github.com/qf/qf/cp/internal/pubsub"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 )
@@ -30,6 +32,7 @@ const (
 type Ingester struct {
 	q         *storegen.Queries
 	fwd       forwarder.Forwarder // nil → PostgreSQL for log events
+	hub       *pubsub.Hub        // nil = SSE disabled
 	logCh     chan storegen.InsertLogEventsBatchParams
 	flowCh    chan storegen.InsertFlowEventsBatchParams
 	counterCh chan storegen.InsertCounterSnapshotsBatchParams
@@ -37,9 +40,10 @@ type Ingester struct {
 }
 
 // New creates an Ingester backed by q. Call Start to launch workers.
-func New(q *storegen.Queries) *Ingester {
+func New(q *storegen.Queries, hub *pubsub.Hub) *Ingester {
 	return &Ingester{
 		q:         q,
+		hub:       hub,
 		logCh:     make(chan storegen.InsertLogEventsBatchParams, chanBuf),
 		flowCh:    make(chan storegen.InsertFlowEventsBatchParams, chanBuf),
 		counterCh: make(chan storegen.InsertCounterSnapshotsBatchParams, chanBuf),
@@ -49,8 +53,8 @@ func New(q *storegen.Queries) *Ingester {
 
 // NewWithForwarder creates an Ingester that forwards log events to fwd
 // instead of writing them to PostgreSQL.
-func NewWithForwarder(q *storegen.Queries, fwd forwarder.Forwarder) *Ingester {
-	ing := New(q)
+func NewWithForwarder(q *storegen.Queries, fwd forwarder.Forwarder, hub *pubsub.Hub) *Ingester {
+	ing := New(q, hub)
 	ing.fwd = fwd
 	return ing
 }
@@ -70,7 +74,9 @@ func (ing *Ingester) Start(ctx context.Context) {
 
 // IngestLogEvents converts a proto LogEvents message and either forwards to
 // the external forwarder (if set) or queues rows for PostgreSQL bulk-insert.
+// Events are also published to the SSE hub (if set) regardless of forwarder.
 func (ing *Ingester) IngestLogEvents(tenantID, hostID pgtype.UUID, msg *qfv1.LogEvents) {
+	hostIDStr := uuidBytesToStr(hostID.Bytes)
 	if ing.fwd != nil {
 		events := make([]forwarder.LogEvent, 0, len(msg.Events))
 		for _, ev := range msg.Events {
@@ -78,6 +84,9 @@ func (ing *Ingester) IngestLogEvents(tenantID, hostID pgtype.UUID, msg *qfv1.Log
 		}
 		if err := ing.fwd.Forward(events); err != nil {
 			slog.Warn("ingest: forwarder error", "err", err)
+		}
+		if ing.hub != nil {
+			ing.publishToHub(hostIDStr, msg)
 		}
 		return
 	}
@@ -88,6 +97,23 @@ func (ing *Ingester) IngestLogEvents(tenantID, hostID pgtype.UUID, msg *qfv1.Log
 		default:
 			slog.Warn("ingest: log channel full, dropping event")
 		}
+	}
+	if ing.hub != nil {
+		ing.publishToHub(hostIDStr, msg)
+	}
+}
+
+func (ing *Ingester) publishToHub(hostID string, msg *qfv1.LogEvents) {
+	for _, ev := range msg.Events {
+		payload, err := json.Marshal(ev)
+		if err != nil {
+			continue
+		}
+		ts := ev.Ts.AsTime()
+		ing.hub.Publish(hostID, pubsub.Message{
+			ID:   ts.UTC().Format(time.RFC3339Nano),
+			Data: payload,
+		})
 	}
 }
 

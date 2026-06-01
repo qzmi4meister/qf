@@ -164,6 +164,10 @@ func bytesToAddr(b []byte) *netip.Addr {
 	return nil
 }
 
+func uuidBytesToStr(b [16]byte) string {
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 func parseUUID(s string) pgtype.UUID {
 	var u pgtype.UUID
 	_ = u.Scan(s)

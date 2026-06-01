@@ -23,6 +23,7 @@ import (
 	"github.com/qf/qf/cp/internal/metrics"
 	"github.com/qf/qf/cp/internal/pki"
 	"github.com/qf/qf/cp/internal/policy"
+	"github.com/qf/qf/cp/internal/pubsub"
 	"github.com/qf/qf/cp/internal/store"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
@@ -60,7 +61,8 @@ func run() error {
 
 	queries := storegen.New(pool)
 
-	// ── Telemetry ingester + partition manager ────────────────────────────────
+	// ── Telemetry ingester + pub/sub hub ─────────────────────────────────────
+	hub := pubsub.NewHub()
 	var ing *ingest.Ingester
 	if dsn := os.Getenv("QF_FORWARDER_DSN"); dsn != "" {
 		fwd, err := forwarder.Open(dsn)
@@ -69,9 +71,9 @@ func run() error {
 		}
 		defer fwd.Close()
 		slog.Info("log events forwarded to external sink", "dsn", dsn)
-		ing = ingest.NewWithForwarder(queries, fwd)
+		ing = ingest.NewWithForwarder(queries, fwd, hub)
 	} else {
-		ing = ingest.New(queries)
+		ing = ingest.New(queries, hub)
 	}
 	go ing.Start(ctx)
 
@@ -169,6 +171,8 @@ func run() error {
 		TenantID:    defaultTenant.ID,
 		OIDCHandler: oidcHandler,
 		OIDCEnabled: oidcCfg.Enabled(),
+		Hub:         hub,
+		Compiler:    policy.NewRulesetCompiler(queries),
 	})
 	httpSrv := &http.Server{
 		Addr:    cfg.httpAddr,

@@ -3,10 +3,13 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/auth"
+	polpkg "github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -76,11 +79,13 @@ type updateRuleRequest struct {
 }
 
 type policyHandler struct {
-	q *storegen.Queries
+	q        *storegen.Queries
+	compiler *polpkg.RulesetCompiler
+	tenantID pgtype.UUID
 }
 
-func registerPolicies(r chi.Router, q *storegen.Queries) {
-	h := &policyHandler{q: q}
+func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, tenantID pgtype.UUID) {
+	h := &policyHandler{q: q, compiler: compiler, tenantID: tenantID}
 	r.Get("/", h.list)
 	r.Post("/", h.create)
 	r.Get("/{id}", h.get)
@@ -93,6 +98,9 @@ func registerPolicies(r chi.Router, q *storegen.Queries) {
 		r.Put("/{ruleID}", h.updateRule)
 		r.Delete("/{ruleID}", h.deleteRule)
 	})
+	r.Post("/{id}/preview", h.preview)
+	r.Get("/{id}/versions", h.listVersions)
+	r.Post("/{id}/versions/{v}/revert", h.revertVersion)
 }
 
 // ── Policies ──────────────────────────────────────────────────────────────────
@@ -191,6 +199,27 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "update policy: "+err.Error())
 		return
 	}
+
+	// Write version snapshot asynchronously (best-effort).
+	go func() {
+		rules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+		content, err := snapshotPolicy(policy, rules)
+		if err != nil {
+			return
+		}
+		actor := ""
+		if c := auth.ClaimsFromCtx(r.Context()); c != nil {
+			actor = c.Email
+		}
+		h.q.InsertConfigVersion(r.Context(), storegen.InsertConfigVersionParams{ //nolint:errcheck
+			TenantID:   tenantUUID,
+			EntityType: "policy",
+			EntityID:   policyUUID,
+			Content:    content,
+			CreatedBy:  actor,
+		})
+	}()
+
 	writeJSON(w, http.StatusOK, toPolicyResponse(policy))
 }
 
@@ -423,4 +452,241 @@ func jsonOrNull(b []byte) json.RawMessage {
 		return json.RawMessage("null")
 	}
 	return json.RawMessage(b)
+}
+
+// ── P4-BE-02: Policy dry-run preview ─────────────────────────────────────────
+
+type previewRequest struct {
+	Rules []polpkg.DryRunRuleSpec `json:"rules"`
+}
+
+func (h *policyHandler) preview(w http.ResponseWriter, r *http.Request) {
+	tenantUUID, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	policyUUID, ok := uuidParam(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, err := h.q.GetPolicy(r.Context(), storegen.GetPolicyParams{
+		ID:       policyUUID,
+		TenantID: tenantUUID,
+	}); err != nil {
+		apiError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	var req previewRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	tenantIDStr := uuidToStr(tenantUUID)
+	policyIDStr := uuidToStr(policyUUID)
+
+	result, err := h.compiler.DryRunPreview(r.Context(), tenantIDStr, policyIDStr, req.Rules)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "preview: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// ── P4-BE-03: Policy version history ─────────────────────────────────────────
+
+type versionResponse struct {
+	ID        string          `json:"id"`
+	Version   int32           `json:"version"`
+	Content   json.RawMessage `json:"content"`
+	CreatedBy string          `json:"created_by"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+func (h *policyHandler) listVersions(w http.ResponseWriter, r *http.Request) {
+	tenantUUID, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	policyUUID, ok := uuidParam(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, err := h.q.GetPolicy(r.Context(), storegen.GetPolicyParams{
+		ID:       policyUUID,
+		TenantID: tenantUUID,
+	}); err != nil {
+		apiError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	versions, err := h.q.ListConfigVersions(r.Context(), storegen.ListConfigVersionsParams{
+		TenantID:   tenantUUID,
+		EntityType: "policy",
+		EntityID:   policyUUID,
+	})
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "list versions: "+err.Error())
+		return
+	}
+
+	resp := make([]versionResponse, 0, len(versions))
+	for _, v := range versions {
+		vr := versionResponse{
+			ID:        uuidToStr(v.ID),
+			Version:   v.Version,
+			Content:   json.RawMessage(v.Content),
+			CreatedBy: v.CreatedBy,
+		}
+		if v.CreatedAt.Valid {
+			vr.CreatedAt = v.CreatedAt.Time
+		}
+		resp = append(resp, vr)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *policyHandler) revertVersion(w http.ResponseWriter, r *http.Request) {
+	tenantUUID, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	policyUUID, ok := uuidParam(w, r, "id")
+	if !ok {
+		return
+	}
+
+	vStr := chi.URLParam(r, "v")
+	vNum, err := strconv.Atoi(vStr)
+	if err != nil || vNum < 1 {
+		apiError(w, http.StatusBadRequest, "invalid version")
+		return
+	}
+
+	// Load the target version snapshot.
+	snap, err := h.q.GetConfigVersion(r.Context(), storegen.GetConfigVersionParams{
+		TenantID:   tenantUUID,
+		EntityType: "policy",
+		EntityID:   policyUUID,
+		Version:    int32(vNum),
+	})
+	if err != nil {
+		apiError(w, http.StatusNotFound, "version not found")
+		return
+	}
+
+	// Decode snapshot to extract policy + rules.
+	var snapshot policySnapshot
+	if err := json.Unmarshal(snap.Content, &snapshot); err != nil {
+		apiError(w, http.StatusInternalServerError, "corrupt snapshot: "+err.Error())
+		return
+	}
+
+	// Overwrite policy fields.
+	policy, err := h.q.UpdatePolicy(r.Context(), storegen.UpdatePolicyParams{
+		ID:          policyUUID,
+		TenantID:    tenantUUID,
+		Name:        snapshot.Policy.Name,
+		Description: snapshot.Policy.Description,
+		Priority:    snapshot.Policy.Priority,
+		Selector:    rawJSONOrEmpty(snapshot.Policy.Selector),
+	})
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "revert policy: "+err.Error())
+		return
+	}
+
+	// Replace rules: delete all, recreate from snapshot.
+	existing, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+	for _, er := range existing {
+		h.q.DeleteRule(r.Context(), er.ID) //nolint:errcheck
+	}
+	for _, sr := range snapshot.Rules {
+		h.q.CreateRule(r.Context(), storegen.CreateRuleParams{ //nolint:errcheck
+			PolicyID:  policyUUID,
+			Name:      sr.Name,
+			Priority:  sr.Priority,
+			Direction: sr.Direction,
+			Match:     rawJSONOrEmpty(sr.Match),
+			State:     sr.State,
+			Action:    sr.Action,
+			Log:       sr.Log,
+			Silent:    sr.Silent,
+		})
+	}
+
+	// Write new version = copy of vN.
+	actor := ""
+	if c := auth.ClaimsFromCtx(r.Context()); c != nil {
+		actor = c.Email
+	}
+	h.q.InsertConfigVersion(r.Context(), storegen.InsertConfigVersionParams{ //nolint:errcheck
+		TenantID:   tenantUUID,
+		EntityType: "policy",
+		EntityID:   policyUUID,
+		Content:    snap.Content,
+		CreatedBy:  actor,
+	})
+
+	writeJSON(w, http.StatusOK, toPolicyResponse(policy))
+}
+
+// policySnapshot is the JSON shape stored in config_versions.content.
+type policySnapshot struct {
+	Policy struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Priority    int32           `json:"priority"`
+		Selector    json.RawMessage `json:"selector"`
+	} `json:"policy"`
+	Rules []struct {
+		Name      string          `json:"name"`
+		Priority  int32           `json:"priority"`
+		Direction string          `json:"direction"`
+		Match     json.RawMessage `json:"match"`
+		State     *string         `json:"state,omitempty"`
+		Action    string          `json:"action"`
+		Log       bool            `json:"log"`
+		Silent    bool            `json:"silent"`
+	} `json:"rules"`
+}
+
+// snapshotPolicy builds a config_versions snapshot for a policy.
+func snapshotPolicy(p storegen.Policy, rules []storegen.Rule) ([]byte, error) {
+	type ruleSnap struct {
+		Name      string          `json:"name"`
+		Priority  int32           `json:"priority"`
+		Direction string          `json:"direction"`
+		Match     json.RawMessage `json:"match"`
+		State     *string         `json:"state,omitempty"`
+		Action    string          `json:"action"`
+		Log       bool            `json:"log"`
+		Silent    bool            `json:"silent"`
+	}
+	snap := struct {
+		Policy struct {
+			Name        string          `json:"name"`
+			Description string          `json:"description"`
+			Priority    int32           `json:"priority"`
+			Selector    json.RawMessage `json:"selector"`
+		} `json:"policy"`
+		Rules []ruleSnap `json:"rules"`
+	}{}
+	snap.Policy.Name = p.Name
+	snap.Policy.Description = p.Description
+	snap.Policy.Priority = p.Priority
+	snap.Policy.Selector = jsonOrNull(p.Selector)
+	for _, r := range rules {
+		snap.Rules = append(snap.Rules, ruleSnap{
+			Name:      r.Name,
+			Priority:  r.Priority,
+			Direction: r.Direction,
+			Match:     jsonOrNull(r.Match),
+			State:     r.State,
+			Action:    r.Action,
+			Log:       r.Log,
+			Silent:    r.Silent,
+		})
+	}
+	return json.Marshal(snap)
 }

@@ -11,17 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/pki"
+	"github.com/qf/qf/cp/internal/pubsub"
+	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
 // RouterConfig holds dependencies for NewRouter.
 type RouterConfig struct {
-	Queries    *storegen.Queries
-	Tokens     *pki.TokenStore
-	JWTSecret  []byte
-	TenantID   pgtype.UUID
-	OIDCHandler *auth.OIDCHandler // nil = OIDC disabled
+	Queries     *storegen.Queries
+	Tokens      *pki.TokenStore
+	JWTSecret   []byte
+	TenantID    pgtype.UUID
+	OIDCHandler *auth.OIDCHandler   // nil = OIDC disabled
 	OIDCEnabled bool
+	Hub         *pubsub.Hub         // nil = SSE disabled
+	Compiler    *policy.RulesetCompiler
 }
 
 // NewRouter builds the chi router with standard middleware and base routes.
@@ -91,10 +95,10 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 		r.Route("/hosts", func(r chi.Router) {
 			registerHosts(r, queries)
 			r.Route("/{id}", func(r chi.Router) {
-				registerEvents(r, queries)
+				registerEvents(r, queries, cfg.Hub)
 			})
 		})
-		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries) })
+		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries, cfg.Compiler, cfg.TenantID) })
 		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries) })
 		r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
 		r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries) })

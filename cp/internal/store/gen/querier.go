@@ -39,6 +39,7 @@ type Querier interface {
 	GetActiveCertificateForHost(ctx context.Context, hostID pgtype.UUID) (Certificate, error)
 	GetBootstrapTokenByHash(ctx context.Context, tokenHash string) (BootstrapToken, error)
 	GetCertificateBySerial(ctx context.Context, serial string) (Certificate, error)
+	GetConfigVersion(ctx context.Context, arg GetConfigVersionParams) (ConfigVersion, error)
 	GetDefaultPolicy(ctx context.Context, tenantID pgtype.UUID) (DefaultPolicy, error)
 	GetHost(ctx context.Context, arg GetHostParams) (Host, error)
 	// Returns the latest snapshot for every rule on a host. Used by REST
@@ -59,6 +60,7 @@ type Querier interface {
 	// =============================================================================
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (AuditLog, error)
 	InsertCertificate(ctx context.Context, arg InsertCertificateParams) (Certificate, error)
+	InsertConfigVersion(ctx context.Context, arg InsertConfigVersionParams) error
 	// =============================================================================
 	// Counter snapshots
 	// =============================================================================
@@ -78,6 +80,7 @@ type Querier interface {
 	ListAPITokens(ctx context.Context, tenantID pgtype.UUID) ([]ApiToken, error)
 	ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]AuditLog, error)
 	ListBootstrapTokens(ctx context.Context, tenantID pgtype.UUID) ([]BootstrapToken, error)
+	ListConfigVersions(ctx context.Context, arg ListConfigVersionsParams) ([]ConfigVersion, error)
 	ListCounterSnapshots(ctx context.Context, arg ListCounterSnapshotsParams) ([]ListCounterSnapshotsRow, error)
 	ListFlowEvents(ctx context.Context, arg ListFlowEventsParams) ([]ListFlowEventsRow, error)
 	ListHosts(ctx context.Context, tenantID pgtype.UUID) ([]Host, error)
@@ -102,6 +105,7 @@ type Querier interface {
 	UpdatePolicy(ctx context.Context, arg UpdatePolicyParams) (Policy, error)
 	UpdateRule(ctx context.Context, arg UpdateRuleParams) (Rule, error)
 	UpdateUserLastLogin(ctx context.Context, id pgtype.UUID) error
+	UpdateUserOIDCSubject(ctx context.Context, arg UpdateUserOIDCSubjectParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error)
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (User, error)
 	UpsertDefaultPolicy(ctx context.Context, arg UpsertDefaultPolicyParams) (DefaultPolicy, error)
