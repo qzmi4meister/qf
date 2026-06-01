@@ -7,7 +7,11 @@ BPF_CFLAGS ?= -g -O2 -Wall -target bpf -D__TARGET_ARCH_$(BPF_ARCH)
 
 BUF ?= buf
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack clean
+# Packaging
+QF_VERSION := $(shell grep -oP '"[^"]+"' version/version.go | tr -d '"')
+PKG_ARCH   := $(shell go env GOARCH)
+
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent clean
 
 all: generate build
 
@@ -63,6 +67,12 @@ bench-conntrack:
 # Requires CAP_BPF on remote; if EPERM, benchmarks self-skip with message.
 bench-bpf:
 	ssh qf 'cd /opt/qf && go test -bench=BenchmarkBPF_ -benchmem -benchtime=50000x -run=^$$ -count=3 ./agent/internal/loader/ 2>&1'
+
+# Package qf-agent as .deb and .rpm via nfpm.
+# Requires: nfpm (https://nfpm.goreleaser.com/), go build must run first.
+pkg-agent: build
+	VERSION=$(QF_VERSION) ARCH=$(PKG_ARCH) nfpm package -f deploy/packaging/nfpm.yaml -p deb -t deploy/packaging/deb/
+	VERSION=$(QF_VERSION) ARCH=$(PKG_ARCH) nfpm package -f deploy/packaging/nfpm.yaml -p rpm -t deploy/packaging/rpm/
 
 clean:
 	$(MAKE) -C agent/bpf clean

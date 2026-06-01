@@ -1,0 +1,27 @@
+name: qf-agent
+arch: "${ARCH}"
+platform: linux
+version: "${VERSION}"
+maintainer: qf project <noreply@github.com>
+description: qf host-based firewall agent (eBPF/TC datapath)
+section: net
+priority: optional
+
+contents:
+  - src: qf-agent
+    dst: /usr/sbin/qf-agent
+    file_info:
+      mode: 0755
+
+  - src: deploy/systemd/qf-agent.service
+    dst: /lib/systemd/system/qf-agent.service
+
+  - src: deploy/packaging/agent.conf
+    dst: /etc/qf/agent.conf
+    type: config|noreplace
+    file_info:
+      mode: 0640
+
+scripts:
+  postinstall: deploy/packaging/postinst
+  preremove: deploy/packaging/prerm

@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+systemctl stop qf-agent || true
+systemctl disable qf-agent || true
