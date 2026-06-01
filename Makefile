@@ -12,7 +12,7 @@ QF_VERSION := $(shell grep -oP '"[^"]+"' version/version.go | tr -d '"')
 PKG_ARCH   := $(shell go env GOARCH)
 QF_IMAGE   ?= localhost/qf-cp
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent docker-cp helm-package clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent docker-cp helm-package test-pki clean
 
 all: generate build
 
@@ -47,6 +47,11 @@ ui-build: ui-install
 # Start Vite dev server (proxies API to localhost:8080).
 ui-dev:
 	cd ui && npm run dev
+
+# PKI unit + token integration tests — token tests require PostgreSQL (QF_TEST_DSN).
+# Run via SSH: set QF_TEST_DSN to the qf database DSN on the remote host.
+test-pki:
+	ssh qf 'cd /opt/qf && QF_TEST_DSN="postgres://qf:qf-pg-secret-2026@postgres-postgresql.qf.svc.cluster.local:5432/qf" go test -race -count=1 ./cp/internal/pki/ 2>&1'
 
 # Event ingest benchmark — requires PostgreSQL; set QF_BENCH_DSN on remote host.
 # Benchmarks self-skip if QF_BENCH_DSN is not set.

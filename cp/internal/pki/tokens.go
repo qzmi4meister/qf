@@ -96,7 +96,7 @@ func (ts *TokenStore) ValidateAndConsume(ctx context.Context, plain string) (*Bo
 		SET    uses_count = uses_count + 1
 		WHERE  token_hash = $1
 		  AND  expires_at > NOW()
-		  AND  uses_count < max_uses
+		  AND  (max_uses = 0 OR uses_count < max_uses)
 		RETURNING id, tenant_id, type, target_host_id, label_template, max_uses, uses_count, expires_at`,
 		hash,
 	)

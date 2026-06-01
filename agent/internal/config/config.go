@@ -25,15 +25,22 @@ type Config struct {
 	PKIDir string
 	// LogLevel is the slog level (debug|info|warn|error).
 	LogLevel string
+	// EnrollEndpoint is the enrollment gRPC address (host:port, plain gRPC, no mTLS).
+	// Defaults to localhost:8444.
+	EnrollEndpoint string
+	// EnrollToken is the bootstrap token used for re-enrollment when the agent
+	// certificate expires. Empty means re-enrollment is disabled (manual action required).
+	EnrollToken string
 }
 
 // Load reads the config file (if it exists) and applies environment overrides.
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		CPEndpoint: "localhost:8443",
-		Interface:  "eth0",
-		PKIDir:     "/etc/qf",
-		LogLevel:   "info",
+		CPEndpoint:     "localhost:8443",
+		Interface:      "eth0",
+		PKIDir:         "/etc/qf",
+		LogLevel:       "info",
+		EnrollEndpoint: "localhost:8444",
 	}
 
 	if err := loadFile(path, cfg); err != nil {
@@ -74,13 +81,11 @@ func loadFile(path string, cfg *Config) error {
 }
 
 func applyEnv(cfg *Config) {
-	envMap := map[string]string{
-		"QF_CP_ENDPOINT": "",
-		"QF_IFACE":       "",
-		"QF_PKI_DIR":     "",
-		"QF_LOG_LEVEL":   "",
+	keys := []string{
+		"QF_CP_ENDPOINT", "QF_IFACE", "QF_PKI_DIR", "QF_LOG_LEVEL",
+		"QF_ENROLL_ENDPOINT", "QF_ENROLL_TOKEN",
 	}
-	for k := range envMap {
+	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
 			applyKV(cfg, k, v)
 		}
@@ -97,6 +102,10 @@ func applyKV(cfg *Config, k, v string) {
 		cfg.PKIDir = v
 	case "QF_LOG_LEVEL":
 		cfg.LogLevel = v
+	case "QF_ENROLL_ENDPOINT":
+		cfg.EnrollEndpoint = v
+	case "QF_ENROLL_TOKEN":
+		cfg.EnrollToken = v
 	default:
 		slog.Debug("config: unknown key", "key", k)
 	}

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/qf/qf/agent/internal/agent"
@@ -26,12 +27,6 @@ func main() {
 
 	setupLogging(cfg.LogLevel)
 
-	bundleKey, err := loadBundleSigningKey(cfg.PKIDir + "/bundle-signing.pub")
-	if err != nil {
-		slog.Error("bundle signing key load failed", "path", cfg.PKIDir+"/bundle-signing.pub", "err", err)
-		os.Exit(1)
-	}
-
 	l, err := loader.Load(cfg.Interface)
 	if err != nil {
 		slog.Error("BPF load failed", "iface", cfg.Interface, "err", err)
@@ -46,24 +41,62 @@ func main() {
 
 	slog.Info("qf-agent starting", "iface", cfg.Interface, "cp", cfg.CPEndpoint)
 
-	grpcCfg := grpcclient.Config{
-		CertFile:   cfg.PKIDir + "/agent.crt",
-		KeyFile:    cfg.PKIDir + "/agent.key",
-		CAFile:     cfg.PKIDir + "/ca.crt",
-		CPEndpoint: cfg.CPEndpoint,
-	}
 	diskBuf := grpcclient.NewDiskBuffer("")
 
-	if err := ag.RunFull(ctx, agent.RunFullConfig{
-		GRPC:      grpcCfg,
-		BundleKey: bundleKey,
-		DiskBuf:   diskBuf,
-	}); err != nil {
-		slog.Error("agent exited with error", "err", err)
+	for {
+		bundleKey, err := loadBundleSigningKey(cfg.PKIDir + "/bundle-signing.pub")
+		if err != nil {
+			slog.Error("bundle signing key load failed", "path", cfg.PKIDir+"/bundle-signing.pub", "err", err)
+			os.Exit(1)
+		}
+
+		grpcCfg := grpcclient.Config{
+			CertFile:   cfg.PKIDir + "/agent.crt",
+			KeyFile:    cfg.PKIDir + "/agent.key",
+			CAFile:     cfg.PKIDir + "/ca.crt",
+			CPEndpoint: cfg.CPEndpoint,
+		}
+
+		runErr := ag.RunFull(ctx, agent.RunFullConfig{
+			GRPC:      grpcCfg,
+			BundleKey: bundleKey,
+			DiskBuf:   diskBuf,
+		})
+
+		if ctx.Err() != nil {
+			break
+		}
+		if runErr == nil {
+			break
+		}
+
+		if isCertExpiredError(runErr) && cfg.EnrollToken != "" {
+			slog.Warn("agent: cert expired, attempting re-enrollment",
+				"enroll_addr", cfg.EnrollEndpoint)
+			hostname, _ := os.Hostname()
+			_, enrollErr := grpcclient.Enroll(ctx, cfg.EnrollEndpoint,
+				cfg.EnrollToken, hostname, cfg.PKIDir)
+			if enrollErr != nil {
+				slog.Error("agent: re-enrollment failed", "err", enrollErr)
+				os.Exit(1)
+			}
+			slog.Info("agent: re-enrollment succeeded, reconnecting")
+			continue
+		}
+
+		slog.Error("agent exited with error", "err", runErr)
 		os.Exit(1)
 	}
 
 	slog.Info("qf-agent stopped")
+}
+
+// isCertExpiredError returns true when the error indicates a TLS failure caused
+// by an expired client certificate being rejected by the server.
+func isCertExpiredError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "expired") ||
+		strings.Contains(msg, "not yet valid")
 }
 
 func loadBundleSigningKey(path string) (ed25519.PublicKey, error) {
