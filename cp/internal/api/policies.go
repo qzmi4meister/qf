@@ -52,10 +52,17 @@ type createPolicyRequest struct {
 }
 
 type updatePolicyRequest struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Priority    int32           `json:"priority"`
-	Selector    json.RawMessage `json:"selector"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Priority    int32                `json:"priority"`
+	Selector    json.RawMessage      `json:"selector"`
+	Rules       []createRuleRequest  `json:"rules"`
+}
+
+// PolicyDetailResponse includes the policy and its rules.
+type PolicyDetailResponse struct {
+	PolicyResponse
+	Rules []RuleResponse `json:"rules"`
 }
 
 type createRuleRequest struct {
@@ -170,7 +177,8 @@ func (h *policyHandler) get(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusNotFound, "policy not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, toPolicyResponse(policy))
+	rules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+	writeJSON(w, http.StatusOK, toPolicyDetailResponse(policy, rules))
 }
 
 func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
@@ -203,10 +211,35 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sync rules: delete all existing, recreate from request body.
+	existing, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+	for _, er := range existing {
+		h.q.DeleteRule(r.Context(), er.ID) //nolint:errcheck
+	}
+	for _, rr := range req.Rules {
+		if rr.Direction == "" {
+			rr.Direction = "ingress"
+		}
+		if rr.Action == "" {
+			rr.Action = "deny"
+		}
+		h.q.CreateRule(r.Context(), storegen.CreateRuleParams{ //nolint:errcheck
+			PolicyID:  policyUUID,
+			Name:      rr.Name,
+			Priority:  rr.Priority,
+			Direction: rr.Direction,
+			Match:     rawJSONOrEmpty(rr.Match),
+			State:     rr.State,
+			Action:    rr.Action,
+			Log:       rr.Log,
+			Silent:    rr.Silent,
+		})
+	}
+	savedRules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+
 	// Write version snapshot asynchronously (best-effort).
 	go func() {
-		rules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
-		content, err := snapshotPolicy(policy, rules)
+		content, err := snapshotPolicy(policy, savedRules)
 		if err != nil {
 			return
 		}
@@ -224,7 +257,7 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.dispatchCascade(r, policyUUID)
-	writeJSON(w, http.StatusOK, toPolicyResponse(policy))
+	writeJSON(w, http.StatusOK, toPolicyDetailResponse(policy, savedRules))
 }
 
 func (h *policyHandler) delete(w http.ResponseWriter, r *http.Request) {
@@ -438,6 +471,14 @@ func toPolicyResponse(p storegen.Policy) PolicyResponse {
 		resp.UpdatedAt = p.UpdatedAt.Time
 	}
 	return resp
+}
+
+func toPolicyDetailResponse(p storegen.Policy, rules []storegen.Rule) PolicyDetailResponse {
+	ruleResps := make([]RuleResponse, 0, len(rules))
+	for _, r := range rules {
+		ruleResps = append(ruleResps, toRuleResponse(r))
+	}
+	return PolicyDetailResponse{PolicyResponse: toPolicyResponse(p), Rules: ruleResps}
 }
 
 func toRuleResponse(r storegen.Rule) RuleResponse {

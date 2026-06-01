@@ -8,6 +8,12 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-06-01
+
+### Fixed
+- `GET /policies/{id}` now returns `rules[]` inline (was missing — UI showed empty rules list on policy open)
+- `PUT /policies/{id}` now accepts and syncs `rules[]` from request body; previously rules were silently discarded on save
+
 ## [0.6.1] — 2026-06-01
 
 ### Fixed
