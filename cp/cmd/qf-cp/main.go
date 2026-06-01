@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/qf/qf/cp/internal/agentsrv"
 	"github.com/qf/qf/cp/internal/api"
+	"github.com/qf/qf/cp/internal/forwarder"
 	"github.com/qf/qf/cp/internal/ingest"
 	"github.com/qf/qf/cp/internal/metrics"
 	"github.com/qf/qf/cp/internal/pki"
@@ -58,7 +59,18 @@ func run() error {
 	queries := storegen.New(pool)
 
 	// ── Telemetry ingester + partition manager ────────────────────────────────
-	ing := ingest.New(queries)
+	var ing *ingest.Ingester
+	if dsn := os.Getenv("QF_FORWARDER_DSN"); dsn != "" {
+		fwd, err := forwarder.Open(dsn)
+		if err != nil {
+			return fmt.Errorf("forwarder: %w", err)
+		}
+		defer fwd.Close()
+		slog.Info("log events forwarded to external sink", "dsn", dsn)
+		ing = ingest.NewWithForwarder(queries, fwd)
+	} else {
+		ing = ingest.New(queries)
+	}
 	go ing.Start(ctx)
 
 	pm := ingest.NewPartitionManager(pool)

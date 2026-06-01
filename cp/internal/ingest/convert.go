@@ -1,11 +1,13 @@
 package ingest
 
 import (
+	"fmt"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/forwarder"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -110,6 +112,42 @@ func protoSystemEventToParams(tenantID, hostID pgtype.UUID, ev *qfv1.SystemEvent
 		Detail:     ev.Detail,
 		Attributes: attrs,
 	}
+}
+
+// protoToForwarderEvent converts a proto LogEvent to a forwarder.LogEvent.
+func protoToForwarderEvent(tenantID, hostID pgtype.UUID, ev *qfv1.LogEvent) forwarder.LogEvent {
+	ts := time.Now()
+	if ev.Ts != nil {
+		ts = ev.Ts.AsTime()
+	}
+	fe := forwarder.LogEvent{
+		TenantID:  uuidToString(tenantID),
+		HostID:    uuidToString(hostID),
+		RuleID:    ev.RuleId,
+		PolicyID:  ev.PolicyId,
+		Direction: protoDirectionStr(ev.Direction),
+		Action:    protoActionStr(ev.Action),
+		Protocol:  int16(ev.Protocol),
+		SrcPort:   int32(ev.SrcPort),
+		DstPort:   int32(ev.DstPort),
+		Ts:        ts,
+		CtState:   protoConntrackStateStr(ev.ConntrackState),
+	}
+	if addr := bytesToAddr(ev.SrcIp); addr != nil {
+		fe.SrcIP = addr.String()
+	}
+	if addr := bytesToAddr(ev.DstIp); addr != nil {
+		fe.DstIP = addr.String()
+	}
+	return fe
+}
+
+func uuidToString(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	b := u.Bytes
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // ── conversion helpers ────────────────────────────────────────────────────

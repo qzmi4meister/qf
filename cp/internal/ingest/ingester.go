@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/qf/qf/cp/internal/forwarder"
 	"github.com/qf/qf/cp/internal/metrics"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
@@ -24,8 +25,11 @@ const (
 )
 
 // Ingester fans telemetry into per-type bulk-insert workers.
+// If fwd is non-nil, log events are forwarded to fwd instead of PostgreSQL.
+// Audit log, flow, counter, and system events always go to PostgreSQL.
 type Ingester struct {
 	q         *storegen.Queries
+	fwd       forwarder.Forwarder // nil → PostgreSQL for log events
 	logCh     chan storegen.InsertLogEventsBatchParams
 	flowCh    chan storegen.InsertFlowEventsBatchParams
 	counterCh chan storegen.InsertCounterSnapshotsBatchParams
@@ -43,6 +47,14 @@ func New(q *storegen.Queries) *Ingester {
 	}
 }
 
+// NewWithForwarder creates an Ingester that forwards log events to fwd
+// instead of writing them to PostgreSQL.
+func NewWithForwarder(q *storegen.Queries, fwd forwarder.Forwarder) *Ingester {
+	ing := New(q)
+	ing.fwd = fwd
+	return ing
+}
+
 // Start launches worker goroutines and blocks until ctx is cancelled.
 func (ing *Ingester) Start(ctx context.Context) {
 	var wg sync.WaitGroup
@@ -56,9 +68,19 @@ func (ing *Ingester) Start(ctx context.Context) {
 
 // ── Public ingest methods ─────────────────────────────────────────────────
 
-// IngestLogEvents converts a proto LogEvents message and queues the rows.
-// tenantID and hostID come from the mTLS stream context.
+// IngestLogEvents converts a proto LogEvents message and either forwards to
+// the external forwarder (if set) or queues rows for PostgreSQL bulk-insert.
 func (ing *Ingester) IngestLogEvents(tenantID, hostID pgtype.UUID, msg *qfv1.LogEvents) {
+	if ing.fwd != nil {
+		events := make([]forwarder.LogEvent, 0, len(msg.Events))
+		for _, ev := range msg.Events {
+			events = append(events, protoToForwarderEvent(tenantID, hostID, ev))
+		}
+		if err := ing.fwd.Forward(events); err != nil {
+			slog.Warn("ingest: forwarder error", "err", err)
+		}
+		return
+	}
 	for _, ev := range msg.Events {
 		p := protoLogEventToParams(tenantID, hostID, ev)
 		select {
