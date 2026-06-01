@@ -87,6 +87,10 @@ func VerifyBundle(bundle *qfv1.PolicyBundle, pubKey ed25519.PublicKey) error {
 	if len(bundle.Signature) == 0 {
 		return ErrNoSignature
 	}
+	// Guard against nil/wrong-length key — ed25519.Verify panics on invalid key size.
+	if len(pubKey) != ed25519.PublicKeySize {
+		return ErrInvalidSignature
+	}
 	sig := bundle.Signature
 
 	// Compute canonical bytes: same as what was signed (Signature cleared).

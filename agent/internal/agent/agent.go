@@ -106,7 +106,7 @@ func (a *Agent) drainEvents(src eventSource) {
 // RunFullConfig holds parameters for the full gRPC-connected agent pipeline.
 type RunFullConfig struct {
 	GRPC      grpcclient.Config
-	BundleKey ed25519.PublicKey // may be nil to skip signature verification
+	BundleKey ed25519.PublicKey // bundle-signing Ed25519 public key; must not be nil in production
 	DiskBuf   *grpcclient.DiskBuffer
 }
 

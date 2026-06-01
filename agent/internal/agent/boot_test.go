@@ -122,28 +122,59 @@ func TestBoot_LoadAndApply_InvalidSignature(t *testing.T) {
 	}
 }
 
-// TestBoot_LoadAndApply_NoSignatureCheck verifies that passing pubKey=nil
-// skips signature verification entirely.
-func TestBoot_LoadAndApply_NoSignatureCheck(t *testing.T) {
+// TestBoot_LoadAndApply_NilKey_RejectsSignedBundle verifies that a nil pubKey
+// causes rejection of a legitimately-signed bundle (ErrInvalidSignature).
+// There is no skip-branch: verification is always performed.
+func TestBoot_LoadAndApply_NilKey_RejectsSignedBundle(t *testing.T) {
+	_, priv := genKeyPair(t)
 	m := &mockApplier{}
 	a := newBootTestAgent(m)
 
-	// Bundle with no signature at all.
 	bundle := validBundle(3)
+	if err := policy.SignBundle(bundle, priv); err != nil {
+		t.Fatalf("SignBundle: %v", err)
+	}
 	dir := t.TempDir()
 	path := writeBundle(t, dir, bundle)
 
-	if err := a.LoadAndApply(path, nil); err != nil {
-		t.Fatalf("LoadAndApply without sig check: %v", err)
+	err := a.LoadAndApply(path, nil)
+	if err == nil {
+		t.Fatal("want error for nil pubKey + signed bundle, got nil")
 	}
-	if a.PolicyStatus() == nil {
-		t.Error("PolicyStatus should not be nil")
+	if !errors.Is(err, policy.ErrInvalidSignature) {
+		t.Errorf("want ErrInvalidSignature, got %v", err)
+	}
+	if a.PolicyStatus() != nil {
+		t.Error("PolicyStatus must be nil when verification fails")
+	}
+}
+
+// TestBoot_LoadAndApply_NilKey_RejectsUnsignedBundle verifies that an unsigned
+// bundle is rejected with ErrNoSignature even when pubKey is nil.
+func TestBoot_LoadAndApply_NilKey_RejectsUnsignedBundle(t *testing.T) {
+	m := &mockApplier{}
+	a := newBootTestAgent(m)
+
+	bundle := validBundle(3) // no signature
+	dir := t.TempDir()
+	path := writeBundle(t, dir, bundle)
+
+	err := a.LoadAndApply(path, nil)
+	if err == nil {
+		t.Fatal("want error for unsigned bundle, got nil")
+	}
+	if !errors.Is(err, policy.ErrNoSignature) {
+		t.Errorf("want ErrNoSignature, got %v", err)
+	}
+	if a.PolicyStatus() != nil {
+		t.Error("PolicyStatus must be nil when verification fails")
 	}
 }
 
 // TestBoot_LoadAndApply_CorruptFile verifies that a corrupt bundle file
 // returns an error and does not apply any policy.
 func TestBoot_LoadAndApply_CorruptFile(t *testing.T) {
+	pub, _ := genKeyPair(t)
 	m := &mockApplier{}
 	a := newBootTestAgent(m)
 
@@ -153,7 +184,7 @@ func TestBoot_LoadAndApply_CorruptFile(t *testing.T) {
 		t.Fatalf("write corrupt file: %v", err)
 	}
 
-	err := a.LoadAndApply(path, nil)
+	err := a.LoadAndApply(path, pub)
 	if err == nil {
 		t.Fatal("want error for corrupt bundle, got nil")
 	}
