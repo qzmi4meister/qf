@@ -1,0 +1,60 @@
+replicaCount: 1
+
+image:
+  repository: localhost/qf-cp
+  tag: ""  # defaults to Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 8443
+  enrollPort: 8444
+
+ingress:
+  enabled: false
+  className: ""
+  host: qf-cp.example.com
+  annotations: {}
+  tls: []
+  # - secretName: qf-cp-tls
+  #   hosts:
+  #     - qf-cp.example.com
+
+pki:
+  persistentVolume:
+    storageClass: ""   # "" = cluster default
+    size: 1Gi
+    existingClaim: "" # set to reuse an existing PVC
+
+# Sensitive values — stored in Kubernetes Secret (stringData).
+# QF_MASTER_KEY and QF_DB_DSN are required; all others optional.
+secrets:
+  dbDSN: ""                    # QF_DB_DSN  (required)
+  masterKey: ""                # QF_MASTER_KEY — 32-byte hex (required)
+  jwtSecret: ""                # QF_JWT_SECRET — ≥32 bytes; ephemeral if empty
+  adminEmail: "admin@localhost"
+  adminPassword: "changeme"
+  oidcClientSecret: ""         # QF_OIDC_CLIENT_SECRET
+
+# Non-sensitive env vars injected directly into the Deployment.
+env:
+  QF_LOG_LEVEL: info
+  QF_CP_HOST: localhost
+  QF_CP_ENDPOINT: "localhost:8444"
+  QF_GRPC_ADDR: ":8443"
+  QF_ENROLL_ADDR: ":8444"
+  QF_HTTP_ADDR: ":8080"
+  QF_PKI_DIR: /etc/qf/pki
+
+resources: {}
+  # limits:
+  #   cpu: 500m
+  #   memory: 256Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

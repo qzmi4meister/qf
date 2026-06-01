@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "qf-cp.fullname" . }}
+  labels:
+    {{- include "qf-cp.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.httpPort }}
+      targetPort: http
+      name: http
+    - port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      name: grpc
+    - port: {{ .Values.service.enrollPort }}
+      targetPort: enroll
+      name: enroll
+  selector:
+    {{- include "qf-cp.selectorLabels" . | nindent 4 }}

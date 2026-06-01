@@ -12,7 +12,7 @@ QF_VERSION := $(shell grep -oP '"[^"]+"' version/version.go | tr -d '"')
 PKG_ARCH   := $(shell go env GOARCH)
 QF_IMAGE   ?= localhost/qf-cp
 
-.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent docker-cp clean
+.PHONY: all generate proto bpf build build-cp ui-install ui-build ui-dev bench-bpf bench-fanout bench-ingest bench-conntrack pkg-agent docker-cp helm-package clean
 
 all: generate build
 
@@ -79,6 +79,11 @@ docker-cp:
 		--manifest $(QF_IMAGE):$(QF_VERSION) \
 		-f deploy/Dockerfile.cp \
 		.
+
+# Package Helm chart into a .tgz in deploy/helm/.
+# Requires: helm
+helm-package:
+	helm package deploy/helm/qf-cp/ -d deploy/helm/
 
 # Package qf-agent as .deb and .rpm via nfpm.
 # Requires: nfpm (https://nfpm.goreleaser.com/), go build must run first.
