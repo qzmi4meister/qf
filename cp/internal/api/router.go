@@ -118,9 +118,7 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 
 		r.Route("/hosts", func(r chi.Router) {
 			registerHosts(r, queries, cfg.Cascade)
-			r.Route("/{id}", func(r chi.Router) {
-				registerEvents(r, queries, cfg.Hub)
-			})
+			registerEvents(r, queries, cfg.Hub)
 		})
 		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries, cfg.Compiler, cfg.Cascade, cfg.TenantID) })
 		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries, cfg.Cascade) })

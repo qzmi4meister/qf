@@ -24,11 +24,11 @@ type eventHandler struct {
 
 func registerEvents(r chi.Router, q *storegen.Queries, hub *pubsub.Hub) {
 	h := &eventHandler{q: q, hub: hub}
-	r.Get("/events", h.listEvents)
-	r.Get("/events/stream", h.streamEvents)
-	r.Get("/flows", h.listFlows)
-	r.Get("/counters", h.listCounters)
-	r.Get("/counters/latest", h.latestCounters)
+	r.Get("/{id}/events", h.listEvents)
+	r.Get("/{id}/events/stream", h.streamEvents)
+	r.Get("/{id}/flows", h.listFlows)
+	r.Get("/{id}/counters", h.listCounters)
+	r.Get("/{id}/counters/latest", h.latestCounters)
 }
 
 // GET /hosts/{id}/events/stream — SSE live tail
