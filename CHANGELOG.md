@@ -8,6 +8,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-06-01
+
+### Fixed
+- chi routing conflict: `GET /hosts/{id}` returned 404 because nested `r.Route("/{id}", ...)` intercepted the request before `registerHosts`' handler. Flattened by moving event routes to `/{id}/events`, `/{id}/flows`, etc. directly in the `/hosts` subrouter.
+
 ## [0.6.0] — 2026-06-01
 
 ### Fixed
