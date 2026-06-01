@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -266,14 +267,14 @@ func (h *policyHandler) listRules(w http.ResponseWriter, r *http.Request) {
 }
 
 // dispatchCascade triggers a non-blocking policy recompile+push for all matching hosts.
-func (h *policyHandler) dispatchCascade(r *http.Request, policyID pgtype.UUID) {
+func (h *policyHandler) dispatchCascade(_ *http.Request, policyID pgtype.UUID) {
 	if h.cascade == nil {
 		return
 	}
 	tenantStr := uuidToStr(h.tenantID)
 	policyStr := uuidToStr(policyID)
 	go func() {
-		if err := h.cascade.OnPolicyChanged(r.Context(), tenantStr, policyStr); err != nil {
+		if err := h.cascade.OnPolicyChanged(context.Background(), tenantStr, policyStr); err != nil {
 			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
 		}
 	}()
