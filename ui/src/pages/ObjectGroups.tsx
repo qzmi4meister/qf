@@ -2,20 +2,115 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Stack, Title, Tabs, Button, Table, Text, Group, ActionIcon, Modal,
-  TextInput, Select, Textarea, Badge, Loader, Center,
+  TextInput, Select, Badge, Loader, Center,
 } from '@mantine/core'
-import { IconPlus, IconTrash, IconEdit } from '@tabler/icons-react'
+import { IconPlus, IconTrash, IconEdit, IconX } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listObjectGroups, createObjectGroup, updateObjectGroup, deleteObjectGroup } from '../api/objectgroups'
 import type { ObjectGroup } from '../types'
 
 const GROUP_TYPES = ['ipset', 'portset', 'hostset']
 
-function defaultSpec(type: string): string {
-  if (type === 'ipset') return JSON.stringify({ cidrs: [] }, null, 2)
-  if (type === 'portset') return JSON.stringify({ ranges: [] }, null, 2)
-  return JSON.stringify({ selector: {} }, null, 2)
+// ── sub-editors ────────────────────────────────────────────────────────────
+
+function StringListEditor({
+  value, onChange, placeholder, addLabel,
+}: {
+  value: string[]
+  onChange: (v: string[]) => void
+  placeholder: string
+  addLabel: string
+}) {
+  return (
+    <Stack gap="xs">
+      {value.map((item, i) => (
+        <Group key={i} gap="xs">
+          <TextInput
+            placeholder={placeholder}
+            value={item}
+            onChange={(e) => { const n = [...value]; n[i] = e.currentTarget.value; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <ActionIcon color="red" variant="subtle" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+            <IconX size={14} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button size="xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={() => onChange([...value, ''])}>
+        {addLabel}
+      </Button>
+    </Stack>
+  )
 }
+
+interface KVPair { key: string; val: string }
+
+function LabelSelector({ value, onChange }: { value: KVPair[]; onChange: (v: KVPair[]) => void }) {
+  return (
+    <Stack gap="xs">
+      {value.map((pair, i) => (
+        <Group key={i} gap="xs">
+          <TextInput
+            placeholder="key"
+            value={pair.key}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, key: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <TextInput
+            placeholder="value"
+            value={pair.val}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, val: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <ActionIcon color="red" variant="subtle" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+            <IconX size={14} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button size="xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={() => onChange([...value, { key: '', val: '' }])}>
+        Add label
+      </Button>
+    </Stack>
+  )
+}
+
+function SpecSummary({ group }: { group: ObjectGroup }) {
+  const spec = group.spec as Record<string, unknown>
+  if (group.type === 'ipset') {
+    const cidrs = (spec?.cidrs ?? []) as string[]
+    if (!cidrs.length) return <Text size="xs" c="dimmed">empty</Text>
+    return (
+      <Group gap={4}>
+        {cidrs.slice(0, 3).map((c) => <Badge key={c} size="xs" variant="outline">{c}</Badge>)}
+        {cidrs.length > 3 && <Text size="xs" c="dimmed">+{cidrs.length - 3}</Text>}
+      </Group>
+    )
+  }
+  if (group.type === 'portset') {
+    const ranges = (spec?.ranges ?? []) as string[]
+    if (!ranges.length) return <Text size="xs" c="dimmed">empty</Text>
+    return (
+      <Group gap={4}>
+        {ranges.slice(0, 4).map((r) => <Badge key={r} size="xs" variant="outline">{r}</Badge>)}
+        {ranges.length > 4 && <Text size="xs" c="dimmed">+{ranges.length - 4}</Text>}
+      </Group>
+    )
+  }
+  if (group.type === 'hostset') {
+    const sel = (spec?.selector ?? {}) as Record<string, string>
+    const entries = Object.entries(sel)
+    if (!entries.length) return <Text size="xs" c="dimmed">any host</Text>
+    return (
+      <Group gap={4}>
+        {entries.slice(0, 3).map(([k, v]) => <Badge key={k} size="xs">{k}={v}</Badge>)}
+        {entries.length > 3 && <Text size="xs" c="dimmed">+{entries.length - 3}</Text>}
+      </Group>
+    )
+  }
+  return null
+}
+
+// ── main page ──────────────────────────────────────────────────────────────
 
 export default function ObjectGroups() {
   const qc = useQueryClient()
@@ -26,20 +121,25 @@ export default function ObjectGroups() {
 
   const [formName, setFormName] = useState('')
   const [formType, setFormType] = useState('ipset')
-  const [formSpec, setFormSpec] = useState(defaultSpec('ipset'))
+  const [formCidrs, setFormCidrs] = useState<string[]>([])
+  const [formRanges, setFormRanges] = useState<string[]>([])
+  const [formLabels, setFormLabels] = useState<KVPair[]>([])
 
   const { data: groups = [], isLoading } = useQuery({
     queryKey: ['objectgroups'],
     queryFn: listObjectGroups,
   })
 
+  function buildSpec() {
+    if (formType === 'ipset') return { cidrs: formCidrs.filter(Boolean) }
+    if (formType === 'portset') return { ranges: formRanges.filter(Boolean) }
+    return { selector: Object.fromEntries(formLabels.filter(p => p.key).map(p => [p.key, p.val])) }
+  }
+
   const saveMut = useMutation({
     mutationFn: async () => {
-      let spec: unknown = {}
-      try { spec = JSON.parse(formSpec) } catch { /* keep {} */ }
-      if (editing) {
-        return updateObjectGroup(editing.id, spec)
-      }
+      const spec = buildSpec()
+      if (editing) return updateObjectGroup(editing.id, spec)
       return createObjectGroup({ type: formType, name: formName, spec })
     },
     onSuccess: () => {
@@ -58,11 +158,20 @@ export default function ObjectGroups() {
     },
   })
 
+  function initForm(type: string, spec?: unknown) {
+    const s = (spec ?? {}) as Record<string, unknown>
+    setFormCidrs(type === 'ipset' ? ((s.cidrs ?? []) as string[]) : [])
+    setFormRanges(type === 'portset' ? ((s.ranges ?? []) as string[]) : [])
+    const sel = (s.selector ?? {}) as Record<string, string>
+    setFormLabels(type === 'hostset' ? Object.entries(sel).map(([key, val]) => ({ key, val })) : [])
+  }
+
   function openCreate() {
     setEditing(null)
     setFormName('')
-    setFormType(activeTab ?? 'ipset')
-    setFormSpec(defaultSpec(activeTab ?? 'ipset'))
+    const t = activeTab ?? 'ipset'
+    setFormType(t)
+    initForm(t)
     setModalOpen(true)
   }
 
@@ -70,7 +179,7 @@ export default function ObjectGroups() {
     setEditing(g)
     setFormName(g.name)
     setFormType(g.type)
-    setFormSpec(JSON.stringify(g.spec, null, 2))
+    initForm(g.type, g.spec)
     setModalOpen(true)
   }
 
@@ -102,7 +211,7 @@ export default function ObjectGroups() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
-                <Table.Th>Spec</Table.Th>
+                <Table.Th>Content</Table.Th>
                 <Table.Th>Updated</Table.Th>
                 <Table.Th />
               </Table.Tr>
@@ -111,11 +220,7 @@ export default function ObjectGroups() {
               {filtered.map((g) => (
                 <Table.Tr key={g.id}>
                   <Table.Td>{g.name}</Table.Td>
-                  <Table.Td>
-                    <Text size="xs" style={{ fontFamily: 'monospace' }}>
-                      {JSON.stringify(g.spec).slice(0, 60)}…
-                    </Text>
-                  </Table.Td>
+                  <Table.Td><SpecSummary group={g} /></Table.Td>
                   <Table.Td>{new Date(g.updated_at).toLocaleString()}</Table.Td>
                   <Table.Td>
                     <Group gap={4}>
@@ -144,36 +249,45 @@ export default function ObjectGroups() {
       <Modal
         opened={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Edit group' : 'New group'}
+        title={editing ? `Edit ${editing.type}` : 'New group'}
       >
         <Stack gap="sm">
           {!editing && (
             <>
-              <TextInput
-                label="Name"
-                value={formName}
-                onChange={(e) => setFormName(e.currentTarget.value)}
-                required
-              />
+              <TextInput label="Name" value={formName} onChange={(e) => setFormName(e.currentTarget.value)} required />
               <Select
                 label="Type"
-                data={GROUP_TYPES}
+                data={[
+                  { value: 'ipset', label: 'IP set (CIDRs)' },
+                  { value: 'portset', label: 'Port set (ports / ranges)' },
+                  { value: 'hostset', label: 'Host set (label selector)' },
+                ]}
                 value={formType}
-                onChange={(v) => {
-                  setFormType(v ?? 'ipset')
-                  setFormSpec(defaultSpec(v ?? 'ipset'))
-                }}
+                onChange={(v) => { const t = v ?? 'ipset'; setFormType(t); initForm(t) }}
               />
             </>
           )}
-          <Textarea
-            label="Spec (JSON)"
-            value={formSpec}
-            onChange={(e) => setFormSpec(e.currentTarget.value)}
-            rows={6}
-            styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
-          />
-          <Group justify="flex-end">
+
+          {formType === 'ipset' && (
+            <div>
+              <Text size="sm" fw={500} mb={4}>CIDRs</Text>
+              <StringListEditor value={formCidrs} onChange={setFormCidrs} placeholder="192.168.0.0/24" addLabel="Add CIDR" />
+            </div>
+          )}
+          {formType === 'portset' && (
+            <div>
+              <Text size="sm" fw={500} mb={4}>Ports / ranges</Text>
+              <StringListEditor value={formRanges} onChange={setFormRanges} placeholder="80  or  8000-9000" addLabel="Add port / range" />
+            </div>
+          )}
+          {formType === 'hostset' && (
+            <div>
+              <Text size="sm" fw={500} mb={4}>Host labels</Text>
+              <LabelSelector value={formLabels} onChange={setFormLabels} />
+            </div>
+          )}
+
+          <Group justify="flex-end" mt="xs">
             <Button variant="subtle" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>Save</Button>
           </Group>
@@ -185,9 +299,7 @@ export default function ObjectGroups() {
           <Text>Delete this group?</Text>
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button color="red" loading={deleteMut.isPending} onClick={() => deleteId && deleteMut.mutate(deleteId)}>
-              Delete
-            </Button>
+            <Button color="red" loading={deleteMut.isPending} onClick={() => deleteId && deleteMut.mutate(deleteId)}>Delete</Button>
           </Group>
         </Stack>
       </Modal>

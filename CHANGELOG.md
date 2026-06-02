@@ -8,6 +8,12 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-06-02
+
+### Changed
+- PolicyDetail: host selector replaced with key-value label editor; rule match replaced with structured fields (protocol, src/dst IP, src/dst ports)
+- ObjectGroups: spec textarea replaced with type-specific editors (CIDR list, port/range list, label selector); table shows human-readable content
+
 ## [0.6.3] — 2026-06-02
 
 ### Added

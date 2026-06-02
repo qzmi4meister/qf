@@ -8,11 +8,94 @@ import {
 } from '@mantine/core'
 import {
   IconPlus, IconTrash, IconEdit, IconPlayerPlay, IconHistory, IconArrowBack,
-  IconAlertCircle,
+  IconAlertCircle, IconX,
 } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { getPolicy, updatePolicy, createPolicy, previewPolicy, listVersions, revertVersion } from '../api/policies'
 import type { Rule, PreviewResult } from '../types'
+
+interface KVPair { key: string; val: string }
+
+function LabelSelector({ value, onChange }: { value: KVPair[]; onChange: (v: KVPair[]) => void }) {
+  return (
+    <Stack gap="xs">
+      {value.map((pair, i) => (
+        <Group key={i} gap="xs">
+          <TextInput
+            placeholder="key"
+            value={pair.key}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, key: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <TextInput
+            placeholder="value"
+            value={pair.val}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, val: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <ActionIcon color="red" variant="subtle" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+            <IconX size={14} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button size="xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={() => onChange([...value, { key: '', val: '' }])}>
+        Add label
+      </Button>
+    </Stack>
+  )
+}
+
+interface RuleMatch {
+  protocol?: string
+  src_ip?: string
+  dst_ip?: string
+  src_ports?: string[]
+  dst_ports?: string[]
+}
+
+function MatchEditor({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const m = (value ?? {}) as RuleMatch
+  function set(patch: Partial<RuleMatch>) {
+    const next: RuleMatch = { ...m, ...patch }
+    if (!next.protocol) delete next.protocol
+    if (!next.src_ip) delete next.src_ip
+    if (!next.dst_ip) delete next.dst_ip
+    if (!next.src_ports?.length) delete next.src_ports
+    if (!next.dst_ports?.length) delete next.dst_ports
+    onChange(next)
+  }
+  return (
+    <Stack gap="xs">
+      <Select
+        label="Protocol"
+        size="xs"
+        data={[{ value: '', label: 'Any' }, { value: 'tcp', label: 'TCP' }, { value: 'udp', label: 'UDP' }, { value: 'icmp', label: 'ICMP' }]}
+        value={m.protocol ?? ''}
+        onChange={(v) => set({ protocol: v ?? '' })}
+      />
+      <Group grow>
+        <TextInput size="xs" label="Src IP / CIDR" placeholder="0.0.0.0/0"
+          value={m.src_ip ?? ''}
+          onChange={(e) => set({ src_ip: e.currentTarget.value })}
+        />
+        <TextInput size="xs" label="Dst IP / CIDR" placeholder="0.0.0.0/0"
+          value={m.dst_ip ?? ''}
+          onChange={(e) => set({ dst_ip: e.currentTarget.value })}
+        />
+      </Group>
+      <Group grow>
+        <TextInput size="xs" label="Src ports" placeholder="80, 443, 8000-9000"
+          value={(m.src_ports ?? []).join(', ')}
+          onChange={(e) => set({ src_ports: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean) })}
+        />
+        <TextInput size="xs" label="Dst ports" placeholder="80, 443, 8000-9000"
+          value={(m.dst_ports ?? []).join(', ')}
+          onChange={(e) => set({ dst_ports: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean) })}
+        />
+      </Group>
+    </Stack>
+  )
+}
 
 const EMPTY_RULE = (): Omit<Rule, 'id' | 'policy_id' | 'created_at' | 'updated_at'> => ({
   name: '',
@@ -39,7 +122,7 @@ export default function PolicyDetail() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<number>(100)
-  const [selectorRaw, setSelectorRaw] = useState('{}')
+  const [selectorLabels, setSelectorLabels] = useState<KVPair[]>([])
   const [rules, setRules] = useState<Omit<Rule, 'id' | 'policy_id' | 'created_at' | 'updated_at'>[]>([])
   const [editRuleIdx, setEditRuleIdx] = useState<number | null>(null)
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null)
@@ -51,15 +134,15 @@ export default function PolicyDetail() {
       setName(policy.name)
       setDescription(policy.description)
       setPriority(policy.priority)
-      setSelectorRaw(JSON.stringify(policy.selector ?? {}, null, 2))
+      const sel = (policy.selector as Record<string, string>) ?? {}
+      setSelectorLabels(Object.entries(sel).map(([key, val]) => ({ key, val })))
       setRules(policy.rules.map(({ id: _id, policy_id: _pid, created_at: _c, updated_at: _u, ...r }) => r))
     }
   }, [policy])
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      let selector: unknown = {}
-      try { selector = JSON.parse(selectorRaw) } catch { /* keep {} */ }
+      const selector = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
       if (isNew) {
         const p = await createPolicy({ name, description, priority, selector })
         await updatePolicy(p.id, { name, description, priority, selector, rules })
@@ -159,13 +242,10 @@ export default function PolicyDetail() {
               onChange={(e) => setDescription(e.currentTarget.value)}
               rows={2}
             />
-            <Textarea
-              label="Host selector (JSON)"
-              value={selectorRaw}
-              onChange={(e) => setSelectorRaw(e.currentTarget.value)}
-              rows={3}
-              styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
-            />
+            <div>
+              <Text size="sm" fw={500} mb={4}>Host selector <Text span c="dimmed" size="xs">(apply policy to hosts matching all labels)</Text></Text>
+              <LabelSelector value={selectorLabels} onChange={setSelectorLabels} />
+            </div>
 
             <div>
               <Group justify="space-between" mb="sm">
@@ -251,15 +331,10 @@ export default function PolicyDetail() {
                         w={120}
                       />
                     </Group>
-                    <Textarea
-                      label="Match (JSON)"
-                      value={JSON.stringify(rules[editRuleIdx].match, null, 2)}
-                      onChange={(e) => {
-                        try { updateRule(editRuleIdx, { match: JSON.parse(e.currentTarget.value) }) } catch { /* noop */ }
-                      }}
-                      rows={4}
-                      styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
-                    />
+                    <div>
+                      <Text size="sm" fw={500} mb={4}>Match conditions</Text>
+                      <MatchEditor value={rules[editRuleIdx].match} onChange={(v) => updateRule(editRuleIdx, { match: v })} />
+                    </div>
                     <Group>
                       <Checkbox
                         label="Log"
