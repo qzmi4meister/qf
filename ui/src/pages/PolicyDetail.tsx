@@ -1,0 +1,527 @@
+import { useState, useEffect } from 'react'
+import { fmtDateTime } from '../utils/date'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Stack, Title, Tabs, Button, TextInput, Textarea, NumberInput, Table, Badge,
+  Group, Text, Anchor, ActionIcon, Modal, Select, Checkbox, Loader, Center,
+  Accordion, Code, Paper, Alert,
+} from '@mantine/core'
+import {
+  IconPlus, IconTrash, IconEdit, IconPlayerPlay, IconHistory, IconArrowBack,
+  IconAlertCircle, IconX,
+} from '@tabler/icons-react'
+import { notifications } from '@mantine/notifications'
+import { getPolicy, updatePolicy, createPolicy, previewPolicy, listVersions, revertVersion } from '../api/policies'
+import { listObjectGroups } from '../api/objectgroups'
+import type { Rule, PreviewResult } from '../types'
+
+interface KVPair { key: string; val: string }
+
+function LabelSelector({ value, onChange }: { value: KVPair[]; onChange: (v: KVPair[]) => void }) {
+  return (
+    <Stack gap="xs">
+      {value.map((pair, i) => (
+        <Group key={i} gap="xs">
+          <TextInput
+            placeholder="key"
+            value={pair.key}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, key: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <TextInput
+            placeholder="value"
+            value={pair.val}
+            onChange={(e) => { const n = [...value]; n[i] = { ...pair, val: e.currentTarget.value }; onChange(n) }}
+            style={{ flex: 1 }}
+          />
+          <ActionIcon color="red" variant="subtle" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+            <IconX size={14} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button size="xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={() => onChange([...value, { key: '', val: '' }])}>
+        Add label
+      </Button>
+    </Stack>
+  )
+}
+
+interface RuleMatch {
+  protocol?: string
+  src_cidrs?: string[]
+  dst_cidrs?: string[]
+  src_ports?: string[]
+  dst_ports?: string[]
+  src_ip_set_id?: string
+  dst_ip_set_id?: string
+  src_port_set_id?: string
+  dst_port_set_id?: string
+  src_host_set_id?: string
+  dst_host_set_id?: string
+  // legacy field names — read-only, migrated to src_cidrs/dst_cidrs on save
+  src_ip?: string
+  dst_ip?: string
+}
+
+function MatchEditor({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const m = (value ?? {}) as RuleMatch
+
+  const { data: groups = [] } = useQuery({ queryKey: ['objectgroups'], queryFn: listObjectGroups })
+  const ipGroups = groups
+    .filter(g => g.type === 'ipset' || g.type === 'hostset')
+    .map(g => ({ value: g.id, label: `${g.name} (${g.type})` }))
+  const portGroups = groups
+    .filter(g => g.type === 'portset')
+    .map(g => ({ value: g.id, label: g.name }))
+
+  function set(patch: Partial<RuleMatch>) {
+    const next: RuleMatch = { ...m, ...patch }
+    delete next.src_ip
+    delete next.dst_ip
+    if (!next.protocol) delete next.protocol
+    if (!next.src_cidrs?.length) delete next.src_cidrs
+    if (!next.dst_cidrs?.length) delete next.dst_cidrs
+    if (!next.src_ports?.length) delete next.src_ports
+    if (!next.dst_ports?.length) delete next.dst_ports
+    if (!next.src_ip_set_id) delete next.src_ip_set_id
+    if (!next.dst_ip_set_id) delete next.dst_ip_set_id
+    if (!next.src_port_set_id) delete next.src_port_set_id
+    if (!next.dst_port_set_id) delete next.dst_port_set_id
+    if (!next.src_host_set_id) delete next.src_host_set_id
+    if (!next.dst_host_set_id) delete next.dst_host_set_id
+    onChange(next)
+  }
+
+  const srcIPGroupId = m.src_ip_set_id ?? m.src_host_set_id ?? null
+  const dstIPGroupId = m.dst_ip_set_id ?? m.dst_host_set_id ?? null
+
+  function setSrcIPGroup(id: string | null) {
+    const g = groups.find(x => x.id === id)
+    set({ src_ip_set_id: g?.type === 'ipset' ? (id ?? undefined) : undefined,
+          src_host_set_id: g?.type === 'hostset' ? (id ?? undefined) : undefined,
+          src_cidrs: undefined })
+  }
+  function setDstIPGroup(id: string | null) {
+    const g = groups.find(x => x.id === id)
+    set({ dst_ip_set_id: g?.type === 'ipset' ? (id ?? undefined) : undefined,
+          dst_host_set_id: g?.type === 'hostset' ? (id ?? undefined) : undefined,
+          dst_cidrs: undefined })
+  }
+
+  // handle legacy src_ip/dst_ip field for display
+  const srcCIDRsDisplay = (m.src_cidrs ?? (m.src_ip ? [m.src_ip] : [])).join(', ')
+  const dstCIDRsDisplay = (m.dst_cidrs ?? (m.dst_ip ? [m.dst_ip] : [])).join(', ')
+
+  return (
+    <Stack gap="xs">
+      <Select
+        label="Protocol"
+        size="xs"
+        data={[{ value: '', label: 'Any' }, { value: 'tcp', label: 'TCP' }, { value: 'udp', label: 'UDP' }, { value: 'icmp', label: 'ICMP' }]}
+        value={m.protocol ?? ''}
+        onChange={(v) => set({ protocol: v ?? '' })}
+      />
+      <Group grow align="flex-start">
+        <Stack gap={4}>
+          <TextInput size="xs" label="Src IP / CIDR" placeholder="10.0.0.0/8, 192.168.1.1"
+            disabled={!!srcIPGroupId}
+            value={srcCIDRsDisplay}
+            onChange={(e) => set({ src_cidrs: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean), src_ip_set_id: undefined, src_host_set_id: undefined })}
+          />
+          <Select size="xs" label="or src IP/Host group" clearable
+            data={ipGroups} value={srcIPGroupId} onChange={setSrcIPGroup}
+          />
+        </Stack>
+        <Stack gap={4}>
+          <TextInput size="xs" label="Dst IP / CIDR" placeholder="10.0.0.0/8, 192.168.1.1"
+            disabled={!!dstIPGroupId}
+            value={dstCIDRsDisplay}
+            onChange={(e) => set({ dst_cidrs: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean), dst_ip_set_id: undefined, dst_host_set_id: undefined })}
+          />
+          <Select size="xs" label="or dst IP/Host group" clearable
+            data={ipGroups} value={dstIPGroupId} onChange={setDstIPGroup}
+          />
+        </Stack>
+      </Group>
+      <Group grow align="flex-start">
+        <Stack gap={4}>
+          <TextInput size="xs" label="Src ports" placeholder="80, 443, 8000-9000"
+            disabled={!!m.src_port_set_id}
+            value={(m.src_ports ?? []).join(', ')}
+            onChange={(e) => set({ src_ports: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean), src_port_set_id: undefined })}
+          />
+          <Select size="xs" label="or src port group" clearable
+            data={portGroups} value={m.src_port_set_id ?? null}
+            onChange={(id) => set({ src_port_set_id: id ?? undefined, src_ports: undefined })}
+          />
+        </Stack>
+        <Stack gap={4}>
+          <TextInput size="xs" label="Dst ports" placeholder="80, 443, 8000-9000"
+            disabled={!!m.dst_port_set_id}
+            value={(m.dst_ports ?? []).join(', ')}
+            onChange={(e) => set({ dst_ports: e.currentTarget.value.split(',').map(s => s.trim()).filter(Boolean), dst_port_set_id: undefined })}
+          />
+          <Select size="xs" label="or dst port group" clearable
+            data={portGroups} value={m.dst_port_set_id ?? null}
+            onChange={(id) => set({ dst_port_set_id: id ?? undefined, dst_ports: undefined })}
+          />
+        </Stack>
+      </Group>
+    </Stack>
+  )
+}
+
+const EMPTY_RULE = (): Omit<Rule, 'id' | 'policy_id' | 'created_at' | 'updated_at'> => ({
+  name: '',
+  priority: 100,
+  direction: 'ingress',
+  match: {},
+  action: 'allow',
+  log: false,
+  silent: false,
+})
+
+export default function PolicyDetail() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const isNew = id === 'new'
+
+  const { data: policy, isLoading } = useQuery({
+    queryKey: ['policy', id],
+    queryFn: () => getPolicy(id!),
+    enabled: !isNew && !!id,
+  })
+
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [priority, setPriority] = useState<number>(100)
+  const [selectorLabels, setSelectorLabels] = useState<KVPair[]>([])
+  const [rules, setRules] = useState<Omit<Rule, 'id' | 'policy_id' | 'created_at' | 'updated_at'>[]>([])
+  const [editRuleIdx, setEditRuleIdx] = useState<number | null>(null)
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  useEffect(() => {
+    if (policy) {
+      setName(policy.name)
+      setDescription(policy.description)
+      setPriority(policy.priority)
+      const sel = (policy.selector as Record<string, string>) ?? {}
+      setSelectorLabels(Object.entries(sel).map(([key, val]) => ({ key, val })))
+      setRules(policy.rules.map(({ id: _id, policy_id: _pid, created_at: _c, updated_at: _u, ...r }) => r))
+    }
+  }, [policy])
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const selector = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
+      if (isNew) {
+        const p = await createPolicy({ name, description, priority, selector })
+        await updatePolicy(p.id, { name, description, priority, selector, rules })
+        return p.id
+      } else {
+        await updatePolicy(id!, { name, description, priority, selector, rules })
+        return id!
+      }
+    },
+    onSuccess: (savedId) => {
+      qc.invalidateQueries({ queryKey: ['policies'] })
+      qc.invalidateQueries({ queryKey: ['policy', savedId] })
+      notifications.show({ message: 'Policy saved', color: 'green' })
+      if (isNew) navigate(`/policies/${savedId}`)
+    },
+    onError: () => notifications.show({ message: 'Save failed', color: 'red' }),
+  })
+
+  const { data: versions = [] } = useQuery({
+    queryKey: ['policy-versions', id],
+    queryFn: () => listVersions(id!),
+    enabled: !isNew && !!id,
+  })
+
+  const revertMut = useMutation({
+    mutationFn: (v: number) => revertVersion(id!, v),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['policy', id] })
+      qc.invalidateQueries({ queryKey: ['policy-versions', id] })
+      notifications.show({ message: 'Reverted', color: 'green' })
+    },
+  })
+
+  async function handlePreview() {
+    if (!id || isNew) return
+    setPreviewLoading(true)
+    setPreviewOpen(true)
+    try {
+      const result = await previewPolicy(id, rules)
+      setPreviewResult(result)
+    } catch (e: unknown) {
+      setPreviewResult(null)
+      setPreviewOpen(false)
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Preview failed'
+      notifications.show({ message: msg, color: 'red' })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  function addRule() {
+    setRules([...rules, EMPTY_RULE()])
+    setEditRuleIdx(rules.length)
+  }
+
+  function removeRule(i: number) {
+    setRules(rules.filter((_, idx) => idx !== i))
+  }
+
+  function updateRule(i: number, patch: Partial<typeof rules[0]>) {
+    setRules(rules.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  }
+
+  if (!isNew && isLoading) return <Center h={200}><Loader /></Center>
+
+  return (
+    <Stack gap="md">
+      <Group>
+        <Anchor component={Link} to="/policies">Policies</Anchor>
+        <Text c="dimmed">/</Text>
+        <Title order={2}>{isNew ? 'New policy' : (policy?.name ?? '…')}</Title>
+      </Group>
+
+      <Tabs defaultValue="edit">
+        <Tabs.List>
+          <Tabs.Tab value="edit" leftSection={<IconEdit size={14} />}>Edit</Tabs.Tab>
+          {!isNew && <Tabs.Tab value="versions" leftSection={<IconHistory size={14} />}>History</Tabs.Tab>}
+        </Tabs.List>
+
+        <Tabs.Panel value="edit" pt="md">
+          <Stack gap="md">
+            <Group align="flex-start">
+              <TextInput
+                label="Name"
+                value={name}
+                onChange={(e) => setName(e.currentTarget.value)}
+                required
+                style={{ flex: 1 }}
+              />
+              <NumberInput
+                label="Priority"
+                value={priority}
+                onChange={(v) => setPriority(Number(v))}
+                w={120}
+              />
+            </Group>
+            <Textarea
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.currentTarget.value)}
+              rows={2}
+            />
+            <div>
+              <Text size="sm" fw={500} mb={4}>Host selector <Text span c="dimmed" size="xs">(apply policy to hosts matching all labels)</Text></Text>
+              <LabelSelector value={selectorLabels} onChange={setSelectorLabels} />
+            </div>
+
+            <div>
+              <Group justify="space-between" mb="sm">
+                <Text fw={600}>Rules</Text>
+                <Button size="xs" leftSection={<IconPlus size={12} />} onClick={addRule}>Add rule</Button>
+              </Group>
+              <Table highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>#</Table.Th>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Direction</Table.Th>
+                    <Table.Th>Action</Table.Th>
+                    <Table.Th>Log</Table.Th>
+                    <Table.Th />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {rules.map((r, i) => (
+                    <Table.Tr key={i} style={editRuleIdx === i ? { background: 'var(--mantine-color-blue-0)' } : undefined}>
+                      <Table.Td>{r.priority}</Table.Td>
+                      <Table.Td>{r.name || <Text c="dimmed" size="sm">unnamed</Text>}</Table.Td>
+                      <Table.Td><Badge size="sm" variant="outline">{r.direction}</Badge></Table.Td>
+                      <Table.Td>
+                        <Badge size="sm" color={r.action === 'deny' ? 'red' : r.action === 'allow' ? 'green' : 'blue'}>
+                          {r.action}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{r.log ? '✓' : ''}</Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          <ActionIcon size="sm" variant="subtle" onClick={() => setEditRuleIdx(editRuleIdx === i ? null : i)}>
+                            <IconEdit size={12} />
+                          </ActionIcon>
+                          <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRule(i)}>
+                            <IconTrash size={12} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {rules.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={6}>
+                        <Text c="dimmed" ta="center" size="sm" py="md">No rules — add one above</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+
+              {editRuleIdx !== null && rules[editRuleIdx] && (
+                <Paper withBorder p="md" mt="sm">
+                  <Stack gap="sm">
+                    <Text fw={600} size="sm">Edit rule #{editRuleIdx + 1}</Text>
+                    <Group>
+                      <TextInput
+                        label="Name"
+                        value={rules[editRuleIdx].name}
+                        onChange={(e) => updateRule(editRuleIdx, { name: e.currentTarget.value })}
+                        style={{ flex: 1 }}
+                      />
+                      <NumberInput
+                        label="Priority"
+                        value={rules[editRuleIdx].priority}
+                        onChange={(v) => updateRule(editRuleIdx, { priority: Number(v) })}
+                        w={100}
+                      />
+                    </Group>
+                    <Group>
+                      <Select
+                        label="Direction"
+                        data={['ingress', 'egress', 'both']}
+                        value={rules[editRuleIdx].direction}
+                        onChange={(v) => updateRule(editRuleIdx, { direction: v ?? 'ingress' })}
+                        w={140}
+                      />
+                      <Select
+                        label="Action"
+                        data={['allow', 'deny', 'log']}
+                        value={rules[editRuleIdx].action}
+                        onChange={(v) => updateRule(editRuleIdx, { action: v ?? 'allow' })}
+                        w={120}
+                      />
+                    </Group>
+                    <div>
+                      <Text size="sm" fw={500} mb={4}>Match conditions</Text>
+                      <MatchEditor value={rules[editRuleIdx].match} onChange={(v) => updateRule(editRuleIdx, { match: v })} />
+                    </div>
+                    <Group>
+                      <Checkbox
+                        label="Log"
+                        checked={rules[editRuleIdx].log}
+                        onChange={(e) => updateRule(editRuleIdx, { log: e.currentTarget.checked })}
+                      />
+                      <Checkbox
+                        label="Silent"
+                        checked={rules[editRuleIdx].silent}
+                        onChange={(e) => updateRule(editRuleIdx, { silent: e.currentTarget.checked })}
+                      />
+                    </Group>
+                    <Button size="xs" variant="subtle" onClick={() => setEditRuleIdx(null)}>Close</Button>
+                  </Stack>
+                </Paper>
+              )}
+            </div>
+
+            <Group>
+              {!isNew && (
+                <Button
+                  variant="outline"
+                  leftSection={<IconPlayerPlay size={14} />}
+                  onClick={handlePreview}
+                >
+                  Preview impact
+                </Button>
+              )}
+              <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>
+                Save policy
+              </Button>
+            </Group>
+          </Stack>
+        </Tabs.Panel>
+
+        {!isNew && (
+          <Tabs.Panel value="versions" pt="md">
+            <Stack gap="sm">
+              {versions.map((v) => (
+                <Paper key={v.id} withBorder p="md">
+                  <Group justify="space-between">
+                    <div>
+                      <Text fw={600}>v{v.version}</Text>
+                      <Text size="xs" c="dimmed">
+                        {fmtDateTime(v.created_at)} · by {v.created_by.slice(0, 8)}
+                      </Text>
+                    </div>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      leftSection={<IconArrowBack size={12} />}
+                      loading={revertMut.isPending}
+                      onClick={() => revertMut.mutate(v.version)}
+                    >
+                      Revert
+                    </Button>
+                  </Group>
+                  <Code block mt="sm" style={{ fontSize: 11, maxHeight: 200, overflow: 'auto' }}>
+                    {JSON.stringify(v.content, null, 2)}
+                  </Code>
+                </Paper>
+              ))}
+              {versions.length === 0 && (
+                <Text c="dimmed" ta="center" size="sm" py="md">No versions yet</Text>
+              )}
+            </Stack>
+          </Tabs.Panel>
+        )}
+      </Tabs>
+
+      <Modal
+        opened={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title="Preview impact"
+        size="lg"
+      >
+        {previewLoading && <Center py="xl"><Loader /></Center>}
+        {!previewLoading && previewResult && (
+          <Stack gap="md">
+            <Alert icon={<IconAlertCircle size={16} />} color={previewResult.affected_count > 0 ? 'yellow' : 'green'}>
+              {previewResult.affected_count} host{previewResult.affected_count !== 1 ? 's' : ''} affected
+            </Alert>
+            <Accordion>
+              {previewResult.hosts.map((h) => {
+                const added = h.added ?? []
+                const removed = h.removed ?? []
+                const changed = h.changed ?? []
+                return (
+                  <Accordion.Item key={h.id} value={h.id}>
+                    <Accordion.Control>
+                      <Group gap="xs">
+                        <Text size="sm">{h.hostname}</Text>
+                        {added.length > 0 && <Badge size="xs" color="green">+{added.length}</Badge>}
+                        {removed.length > 0 && <Badge size="xs" color="red">-{removed.length}</Badge>}
+                        {changed.length > 0 && <Badge size="xs" color="yellow">~{changed.length}</Badge>}
+                      </Group>
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      {added.map((r) => <Text key={r} size="xs" c="green">+ {r}</Text>)}
+                      {removed.map((r) => <Text key={r} size="xs" c="red">- {r}</Text>)}
+                      {changed.map((r) => <Text key={r} size="xs" c="yellow">~ {r}</Text>)}
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                )
+              })}
+            </Accordion>
+          </Stack>
+        )}
+      </Modal>
+    </Stack>
+  )
+}

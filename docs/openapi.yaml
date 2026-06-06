@@ -1,0 +1,1785 @@
+openapi: 3.0.3
+info:
+  title: qf Control Plane API
+  description: |
+    REST API for the qf host-based firewall control plane.
+
+    **Authentication**: Most endpoints require either a JWT cookie (`qf_token`, set by `POST /auth/login`)
+    or an `Authorization: Bearer <token>` header (JWT or opaque API token).
+
+    **Tenant**: Protected endpoints require the `X-Tenant-ID` header (UUID of the tenant).
+  version: "0.5.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Authentication and session management
+  - name: Hosts
+    description: Managed firewall hosts
+  - name: Events
+    description: Log events, flow events, and counters per host
+  - name: Policies
+    description: Firewall policies and rules
+  - name: ObjectGroups
+    description: Named IP/port/host sets for use in rules
+  - name: Tokens
+    description: Agent enrollment tokens
+  - name: DefaultPolicy
+    description: Tenant-level default allow/deny actions
+  - name: AuditLog
+    description: API audit trail
+  - name: Users
+    description: User management (Admin role required for mutations)
+  - name: APITokens
+    description: Long-lived API tokens for automation
+
+# ── Security ──────────────────────────────────────────────────────────────────
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: qf_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    TenantID:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      description: Tenant UUID
+      schema:
+        type: string
+        format: uuid
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 500
+        maximum: 1000
+    StartTime:
+      name: start
+      in: query
+      schema:
+        type: string
+        format: date-time
+    EndTime:
+      name: end
+      in: query
+      schema:
+        type: string
+        format: date-time
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    # ── Hosts ──────────────────────────────────────────────────────────────
+
+    Host:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        hostname:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          enum: [pending, enrolling, active, degraded, offline]
+        current_generation:
+          type: integer
+        last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        agent_version:
+          type: string
+          nullable: true
+        kernel_version:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateHostRequest:
+      type: object
+      required: [hostname]
+      properties:
+        hostname:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          default: pending
+
+    PatchHostRequest:
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+
+    # ── Policies ───────────────────────────────────────────────────────────
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        priority:
+          type: integer
+        selector:
+          type: object
+          description: |
+            Label-selector to match hosts. Example: `{"matchLabels": {"env": "prod"}}`.
+            Empty selector matches all hosts.
+        current_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePolicyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        priority:
+          type: integer
+          default: 0
+        selector:
+          type: object
+
+    UpdatePolicyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        priority:
+          type: integer
+        selector:
+          type: object
+
+    Rule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        priority:
+          type: integer
+        direction:
+          type: string
+          enum: [ingress, egress]
+        match:
+          type: object
+          description: |
+            BPF match criteria. Fields: `src_ip`, `dst_ip`, `src_port`, `dst_port`, `proto`.
+            Example: `{"dst_port": 443, "proto": "tcp"}`.
+        state:
+          type: string
+          nullable: true
+          description: conntrack state filter (e.g. `established`)
+        action:
+          type: string
+          enum: [allow, deny, log]
+        log:
+          type: boolean
+        silent:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateRuleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        priority:
+          type: integer
+          default: 0
+        direction:
+          type: string
+          enum: [ingress, egress]
+          default: ingress
+        match:
+          type: object
+        state:
+          type: string
+          nullable: true
+        action:
+          type: string
+          enum: [allow, deny, log]
+          default: deny
+        log:
+          type: boolean
+          default: false
+        silent:
+          type: boolean
+          default: false
+
+    UpdateRuleRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateRuleRequest'
+
+    PolicyVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        content:
+          type: object
+          description: Full policy+rules snapshot
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    DryRunRuleSpec:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Existing rule UUID; omit for new rules
+        name:
+          type: string
+        priority:
+          type: integer
+        direction:
+          type: string
+          enum: [ingress, egress]
+        match:
+          type: object
+        state:
+          type: string
+          nullable: true
+        action:
+          type: string
+          enum: [allow, deny, log]
+        log:
+          type: boolean
+        silent:
+          type: boolean
+
+    PreviewRequest:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/DryRunRuleSpec'
+
+    HostDiff:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        hostname:
+          type: string
+        added:
+          type: array
+          items:
+            type: string
+        removed:
+          type: array
+          items:
+            type: string
+        changed:
+          type: array
+          items:
+            type: string
+
+    PreviewResult:
+      type: object
+      properties:
+        affected_count:
+          type: integer
+        hosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/HostDiff'
+
+    # ── Object Groups ──────────────────────────────────────────────────────
+
+    ObjectGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [ipset, portset, hostset]
+        name:
+          type: string
+        spec:
+          type: object
+          description: |
+            Group definition. Examples:
+            - ipset: `{"cidrs": ["10.0.0.0/8", "192.168.1.0/24"]}`
+            - portset: `{"ports": [80, 443, 8080]}`
+            - hostset: `{"hostnames": ["db.internal", "redis.internal"]}`
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateObjectGroupRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [ipset, portset, hostset]
+        name:
+          type: string
+        spec:
+          type: object
+
+    UpdateObjectGroupRequest:
+      type: object
+      required: [spec]
+      properties:
+        spec:
+          type: object
+
+    # ── Tokens ─────────────────────────────────────────────────────────────
+
+    Token:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [single_host, bulk]
+        target_host_id:
+          type: string
+          format: uuid
+          nullable: true
+        label_template:
+          type: object
+          additionalProperties:
+            type: string
+        max_uses:
+          type: integer
+        uses_count:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: Plain token value — only present in create response
+
+    CreateTokenRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [single_host, bulk]
+        target_host_id:
+          type: string
+          format: uuid
+          description: Required when type=single_host
+        label_template:
+          type: object
+          additionalProperties:
+            type: string
+        ttl_seconds:
+          type: integer
+          default: 3600
+        max_uses:
+          type: integer
+          default: 1
+
+    # ── Default Policy ─────────────────────────────────────────────────────
+
+    DefaultPolicy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        default_ingress_action:
+          type: string
+          enum: [allow, deny]
+        default_egress_action:
+          type: string
+          enum: [allow, deny]
+        updated_at:
+          type: string
+          format: date-time
+
+    PutDefaultPolicyRequest:
+      type: object
+      properties:
+        default_ingress_action:
+          type: string
+          enum: [allow, deny]
+          default: deny
+        default_egress_action:
+          type: string
+          enum: [allow, deny]
+          default: deny
+
+    # ── Events ─────────────────────────────────────────────────────────────
+
+    LogEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [ingress, egress]
+        action:
+          type: string
+          enum: [allow, deny, log]
+        protocol:
+          type: integer
+          description: IP protocol number (6=TCP, 17=UDP)
+        src_ip:
+          type: string
+        src_port:
+          type: integer
+          nullable: true
+        dst_ip:
+          type: string
+        dst_port:
+          type: integer
+          nullable: true
+        packet_size:
+          type: integer
+          nullable: true
+        tcp_flags:
+          type: integer
+          nullable: true
+        ct_state:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    FlowEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+          format: uuid
+        protocol:
+          type: integer
+        src_ip:
+          type: string
+        src_port:
+          type: integer
+          nullable: true
+        dst_ip:
+          type: string
+        dst_port:
+          type: integer
+          nullable: true
+        bytes_orig:
+          type: integer
+          format: int64
+        bytes_reply:
+          type: integer
+          format: int64
+        packets_orig:
+          type: integer
+          format: int64
+        packets_reply:
+          type: integer
+          format: int64
+        final_state:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Counter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+          format: uuid
+        rule_id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        packets:
+          type: integer
+          format: int64
+        bytes:
+          type: integer
+          format: int64
+        ts:
+          type: string
+          format: date-time
+
+    # ── Audit Log ──────────────────────────────────────────────────────────
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        actor_type:
+          type: string
+        actor_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        object_type:
+          type: string
+        object_id:
+          type: string
+          format: uuid
+        before:
+          type: object
+          nullable: true
+        after:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Auth ───────────────────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    MeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+        tenant_id:
+          type: string
+          format: uuid
+
+    # ── Users ──────────────────────────────────────────────────────────────
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended]
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+        is_oidc:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required: [email, password, role]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+
+    PatchUserRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, suspended]
+        password:
+          type: string
+          format: password
+
+    RoleResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+
+    PutRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+
+    # ── API Tokens ─────────────────────────────────────────────────────────
+
+    APIToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+        created_by:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: Plain token — only present in create response
+
+    CreateAPITokenRequest:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, auditor]
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── System ────────────────────────────────────────────────────────────────
+
+  /healthz:
+    get:
+      tags: [Auth]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login successful; sets `qf_token` and `qf_refresh` cookies
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear session cookies
+      security: []
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token using refresh cookie
+      security: []
+      responses:
+        "200":
+          description: New access token cookie set
+        "401":
+          description: Invalid or expired refresh token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user identity
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/oidc/enabled:
+    get:
+      tags: [Auth]
+      summary: Check if OIDC login is enabled
+      security: []
+      responses:
+        "200":
+          description: OIDC status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+
+  /auth/oidc/login:
+    get:
+      tags: [Auth]
+      summary: Initiate OIDC login flow (redirect to provider)
+      security: []
+      responses:
+        "302":
+          description: Redirect to OIDC provider
+
+  /auth/oidc/callback:
+    get:
+      tags: [Auth]
+      summary: OIDC callback — exchange code for tokens
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to /app after successful login
+        "400":
+          description: Invalid state or code
+
+  # ── Hosts ─────────────────────────────────────────────────────────────────
+
+  /hosts:
+    get:
+      tags: [Hosts]
+      summary: List all hosts
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        "200":
+          description: List of hosts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Host'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Hosts]
+      summary: Create a host
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHostRequest'
+      responses:
+        "201":
+          description: Host created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Host'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /hosts/{id}:
+    get:
+      tags: [Hosts]
+      summary: Get a host by ID
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Host
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Host'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Hosts]
+      summary: Update host labels or status
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchHostRequest'
+      responses:
+        "200":
+          description: Updated host
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Host'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── Events ────────────────────────────────────────────────────────────────
+
+  /hosts/{id}/events:
+    get:
+      tags: [Events]
+      summary: List log events for a host
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - $ref: '#/components/parameters/StartTime'
+        - $ref: '#/components/parameters/EndTime'
+        - $ref: '#/components/parameters/Limit'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [allow, deny, log]
+      responses:
+        "200":
+          description: Log events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEvent'
+
+  /hosts/{id}/events/stream:
+    get:
+      tags: [Events]
+      summary: SSE live tail of log events
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - name: Last-Event-ID
+          in: header
+          description: Resume from this RFC3339Nano timestamp
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Server-sent event stream (text/event-stream)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /hosts/{id}/flows:
+    get:
+      tags: [Events]
+      summary: List flow events for a host
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - $ref: '#/components/parameters/StartTime'
+        - $ref: '#/components/parameters/EndTime'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          description: Flow events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlowEvent'
+
+  /hosts/{id}/counters:
+    get:
+      tags: [Events]
+      summary: List counter snapshots for a host
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - $ref: '#/components/parameters/StartTime'
+        - $ref: '#/components/parameters/EndTime'
+        - $ref: '#/components/parameters/Limit'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Counter snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Counter'
+
+  /hosts/{id}/counters/latest:
+    get:
+      tags: [Events]
+      summary: Latest counter snapshot per rule for a host
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Latest counters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Counter'
+
+  # ── Policies ──────────────────────────────────────────────────────────────
+
+  /policies:
+    get:
+      tags: [Policies]
+      summary: List policies
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        "200":
+          description: Policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Policy'
+    post:
+      tags: [Policies]
+      summary: Create a policy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyRequest'
+      responses:
+        "201":
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+
+  /policies/{id}:
+    get:
+      tags: [Policies]
+      summary: Get a policy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Policies]
+      summary: Update a policy (creates a version snapshot)
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePolicyRequest'
+      responses:
+        "200":
+          description: Updated policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+    delete:
+      tags: [Policies]
+      summary: Delete a policy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /policies/{id}/rules:
+    get:
+      tags: [Policies]
+      summary: List rules for a policy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rule'
+    post:
+      tags: [Policies]
+      summary: Create a rule
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRuleRequest'
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rule'
+
+  /policies/{id}/rules/{ruleID}:
+    get:
+      tags: [Policies]
+      summary: Get a rule
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rule'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Policies]
+      summary: Update a rule
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRuleRequest'
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rule'
+    delete:
+      tags: [Policies]
+      summary: Delete a rule
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - name: ruleID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+
+  /policies/{id}/preview:
+    post:
+      tags: [Policies]
+      summary: Dry-run preview — compute host impact without applying
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewRequest'
+      responses:
+        "200":
+          description: Preview result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewResult'
+
+  /policies/{id}/versions:
+    get:
+      tags: [Policies]
+      summary: List version snapshots for a policy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyVersion'
+
+  /policies/{id}/versions/{v}/revert:
+    post:
+      tags: [Policies]
+      summary: Revert policy to a previous version
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+        - name: v
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reverted policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── Object Groups ─────────────────────────────────────────────────────────
+
+  /objectgroups:
+    get:
+      tags: [ObjectGroups]
+      summary: List object groups
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ipset, portset, hostset]
+      responses:
+        "200":
+          description: Object groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ObjectGroup'
+    post:
+      tags: [ObjectGroups]
+      summary: Create an object group
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateObjectGroupRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectGroup'
+
+  /objectgroups/{id}:
+    get:
+      tags: [ObjectGroups]
+      summary: Get an object group
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Object group
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectGroup'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [ObjectGroups]
+      summary: Update object group spec
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateObjectGroupRequest'
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectGroup'
+    delete:
+      tags: [ObjectGroups]
+      summary: Delete an object group
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Tokens ────────────────────────────────────────────────────────────────
+
+  /tokens:
+    get:
+      tags: [Tokens]
+      summary: List enrollment tokens
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Token'
+    post:
+      tags: [Tokens]
+      summary: Create an enrollment token
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+      responses:
+        "201":
+          description: Token created; plain token in `token` field (shown once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+
+  /tokens/{id}:
+    delete:
+      tags: [Tokens]
+      summary: Revoke an enrollment token
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "204":
+          description: Revoked
+
+  # ── Default Policy ────────────────────────────────────────────────────────
+
+  /default-policy:
+    get:
+      tags: [DefaultPolicy]
+      summary: Get tenant default ingress/egress actions
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        "200":
+          description: Default policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultPolicy'
+    put:
+      tags: [DefaultPolicy]
+      summary: Set tenant default ingress/egress actions
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutDefaultPolicyRequest'
+      responses:
+        "200":
+          description: Updated default policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultPolicy'
+
+  # ── Audit Log ─────────────────────────────────────────────────────────────
+
+  /audit-log:
+    get:
+      tags: [AuditLog]
+      summary: List audit log entries
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/StartTime'
+        - $ref: '#/components/parameters/EndTime'
+        - $ref: '#/components/parameters/Limit'
+        - name: actor_type
+          in: query
+          schema:
+            type: string
+        - name: actor_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: object_type
+          in: query
+          schema:
+            type: string
+        - name: object_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLog'
+
+  # ── Users ─────────────────────────────────────────────────────────────────
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags: [Users]
+      summary: Create a user (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get a user
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Users]
+      summary: Update user status or password (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchUserRequest'
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [Users]
+      summary: Delete a user (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{id}/roles:
+    get:
+      tags: [Users]
+      summary: Get user role
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "200":
+          description: Role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+    put:
+      tags: [Users]
+      summary: Set user role (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutRoleRequest'
+      responses:
+        "200":
+          description: Updated role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  # ── API Tokens ────────────────────────────────────────────────────────────
+
+  /api-tokens:
+    get:
+      tags: [APITokens]
+      summary: List API tokens
+      responses:
+        "200":
+          description: API tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIToken'
+    post:
+      tags: [APITokens]
+      summary: Create an API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPITokenRequest'
+      responses:
+        "201":
+          description: Token created; plain token in `token` field (shown once)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIToken'
+
+  /api-tokens/{id}:
+    delete:
+      tags: [APITokens]
+      summary: Revoke an API token
+      parameters:
+        - $ref: '#/components/parameters/ResourceID'
+      responses:
+        "204":
+          description: Revoked
+
+  # ── OpenAPI + Docs ────────────────────────────────────────────────────────
+
+  /openapi.yaml:
+    get:
+      tags: [Auth]
+      summary: OpenAPI 3.0 spec (this file)
+      security: []
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /docs:
+    get:
+      tags: [Auth]
+      summary: Swagger UI
+      security: []
+      responses:
+        "200":
+          description: Interactive API documentation
+
+# ── Reusable responses ────────────────────────────────────────────────────────
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

@@ -1,0 +1,17 @@
+{{- if not .Values.pki.persistentVolume.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "qf-cp.fullname" . }}-pki
+  labels:
+    {{- include "qf-cp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.pki.persistentVolume.storageClass }}
+  storageClassName: {{ .Values.pki.persistentVolume.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.pki.persistentVolume.size }}
+{{- end }}

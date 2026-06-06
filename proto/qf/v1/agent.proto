@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package qf.v1;
+
+option go_package = "github.com/qf/qf/proto/qf/v1;qfv1";
+
+import "google/protobuf/timestamp.proto";
+import "qf/v1/common.proto";
+
+// Main bidirectional stream between agent and CP. Authentication via mTLS;
+// host_id and tenant_id are derived from the client certificate Subject.
+// All policy, telemetry, lifecycle exchanges are multiplexed on this single
+// stream — see design/05-protocol.md.
+service AgentService {
+  rpc Stream(stream AgentMessage) returns (stream ServerMessage);
+}
+
+// Wrapper for agent -> CP messages. Exactly one field of `payload` set per
+// envelope.
+message AgentMessage {
+  oneof payload {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    BundleAck bundle_ack = 3;
+    BundleApplied bundle_applied = 4;
+    LogEvents log_events = 5;
+    FlowEvents flow_events = 6;
+    CounterUpdate counter_update = 7;
+    SystemEvent system_event = 8;
+    CertRenewalRequest cert_renewal_request = 9;
+  }
+}
+
+// Wrapper for CP -> agent messages. Exactly one field of `payload` set per
+// envelope.
+message ServerMessage {
+  oneof payload {
+    Welcome welcome = 1;
+    PolicyBundle policy_bundle = 2;
+    ConfigUpdate config_update = 3;
+    DisconnectRequest disconnect_request = 4;
+    CertRenewalResponse cert_renewal_response = 5;
+  }
+}
+
+// =============================================================================
+// Agent -> CP
+// =============================================================================
+
+// First message on a freshly opened stream. CP responds with Welcome.
+message Hello {
+  string agent_version = 1;
+  string kernel_version = 2;
+  string hostname = 3;
+  // Generation of the policy bundle currently applied. 0 means none applied
+  // yet (fresh agent without cached bundle).
+  int64 current_generation = 4;
+  // Interfaces the agent intends to / has attached to.
+  repeated InterfaceInfo interfaces = 5;
+  // Hash of the agent's compiled BPF program inventory (CO-RE objects).
+  // Used for detecting agent/program drift across reconnects and across
+  // agent upgrades.
+  string bpf_inventory_hash = 6;
+}
+
+// Periodic heartbeat. Default interval is delivered via ConfigUpdate.
+message Heartbeat {
+  int64 current_generation = 1;
+  AgentHealth health = 2;
+  google.protobuf.Timestamp ts = 3;
+}
+
+message AgentHealth {
+  float cpu_pct = 1;
+  uint64 mem_bytes = 2;
+  // Per-BPF-map utilization fraction (0.0 - 1.0). Key is map name, e.g.
+  // "conntrack", "rules", "ipset_<id>".
+  map<string, float> bpf_map_utilization = 3;
+  // Current and max entries in qf's own BPF conntrack map.
+  uint64 conntrack_current = 4;
+  uint64 conntrack_max = 5;
+  // Snapshot of kernel nf_conntrack (read from /proc) for side-by-side
+  // visibility in UI; see design/04-datapath.md.
+  uint64 kernel_conntrack_current = 6;
+  uint64 kernel_conntrack_max = 7;
+}
+
+// Sent after receiving a PolicyBundle and verifying its signature, before
+// attempting to apply.
+message BundleAck {
+  int64 generation = 1;
+  bool signature_verified = 2;
+  // If signature_verified == false: reason.
+  string error_message = 3;
+}
+
+// Sent after attempting to apply a bundle. On failure, the agent continues
+// to run on the previous successful generation.
+message BundleApplied {
+  int64 generation = 1;
+  bool success = 2;
+  string error_message = 3;
+  uint32 duration_ms = 4;
+}
+
+// Batch of packet-level log events. Sent periodically; batching parameters
+// come from ConfigUpdate. Events are dropped (not back-pressured) on agent
+// overflow with a counter.
+message LogEvents {
+  repeated LogEvent events = 1;
+  // Events suppressed by per-rule rate-limit since the previous LogEvents
+  // message. Cumulative since last report, then resets.
+  uint64 suppressed_count = 2;
+}
+
+message LogEvent {
+  google.protobuf.Timestamp ts = 1;
+  string rule_id = 2;
+  string policy_id = 3;
+  Direction direction = 4;
+  Action action = 5;       // ALLOW (if log=true), DENY, or LOG
+  Protocol protocol = 6;
+  bytes src_ip = 7;        // 4 bytes for IPv4, 16 for IPv6
+  uint32 src_port = 8;
+  bytes dst_ip = 9;
+  uint32 dst_port = 10;
+  uint32 packet_size = 11;
+  uint32 tcp_flags = 12;   // bitmask; 0 for non-TCP
+  ConntrackState conntrack_state = 13;
+}
+
+// Batch of connection-level flow events. Emitted on connection creation and
+// teardown by conntrack. Disabled per host/policy by default.
+message FlowEvents {
+  repeated FlowEvent flows = 1;
+}
+
+message FlowEvent {
+  google.protobuf.Timestamp ts_start = 1;
+  google.protobuf.Timestamp ts_end = 2;
+  Protocol protocol = 3;
+  bytes src_ip = 4;
+  uint32 src_port = 5;
+  bytes dst_ip = 6;
+  uint32 dst_port = 7;
+  uint64 bytes_orig = 8;
+  uint64 bytes_reply = 9;
+  uint64 packets_orig = 10;
+  uint64 packets_reply = 11;
+  // Terminal conntrack state, e.g. "TCP_CLOSED", "UDP_TIMEOUT", "RST".
+  string final_state = 12;
+}
+
+// Periodic snapshot of per-rule counters. Values are absolute (not deltas);
+// CP computes rates.
+message CounterUpdate {
+  google.protobuf.Timestamp ts = 1;
+  repeated RuleCounter counters = 2;
+}
+
+message RuleCounter {
+  string rule_id = 1;
+  uint64 packets = 2;
+  uint64 bytes = 3;
+}
+
+// Out-of-band agent lifecycle and health events, distinct from packet logs.
+message SystemEvent {
+  google.protobuf.Timestamp ts = 1;
+  // Stable event type identifier. Examples: "agent_started",
+  // "attach_failed", "signature_invalid", "cp_connection_restored",
+  // "bundle_cache_loaded", "interface_disappeared".
+  string type = 2;
+  Severity severity = 3;
+  // Human-readable detail. Structured context goes in attributes.
+  string detail = 4;
+  map<string, string> attributes = 5;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+}
+
+// Request to rotate the agent's mTLS certificate. Sent through the existing
+// (still-valid) mTLS channel; CP authenticates via the current cert.
+message CertRenewalRequest {
+  string csr_pem = 1;
+}
+
+// =============================================================================
+// CP -> Agent
+// =============================================================================
+
+// Response to Hello. If accepted == false the server will close the stream
+// after this message.
+message Welcome {
+  bool accepted = 1;
+  // If accepted == false. Examples: "cert revoked", "host decommissioned",
+  // "tenant suspended".
+  string reject_reason = 2;
+  // Current generation on the server for this host. If
+  // hello.current_generation < server_generation, a PolicyBundle follows
+  // immediately on the same stream.
+  int64 server_generation = 3;
+  // CP version. Agent may warn the user if it's too far ahead.
+  string server_version = 4;
+  // Operational config applied to this agent. May be overridden later by a
+  // standalone ConfigUpdate.
+  ConfigUpdate config = 5;
+}
+
+// Compiled effective ruleset for one host. Fully resolved — no references
+// to ObjectGroup names remain; all CIDRs and ports are inlined.
+message PolicyBundle {
+  int64 generation = 1;
+
+  // Ordered ruleset. Already sorted by (policy_priority, rule_priority,
+  // rule_id) — agent applies in array order, first terminal match wins.
+  repeated EffectiveRule rules = 2;
+
+  // Defaults applied if no rule yielded a terminal verdict.
+  Action default_ingress_action = 3;
+  Action default_egress_action = 4;
+
+  // If false, agent disables conntrack entirely (no rule uses a state
+  // predicate). See design/04-datapath.md auto-disable.
+  bool requires_conntrack = 5;
+
+  // Ed25519 signature over a canonical serialization of this bundle, signed
+  // by CP's bundle signing key. Agent verifies against bundle_signing_pub
+  // (received at enrollment). Required for cache integrity.
+  bytes signature = 6;
+  google.protobuf.Timestamp signed_at = 7;
+}
+
+message EffectiveRule {
+  // Stable IDs preserved across edits, for telemetry attribution and
+  // debugging.
+  string rule_id = 1;
+  string policy_id = 2;
+  string rule_name = 3;
+  string policy_name = 4;
+
+  // Composite priority components. Agent does not re-sort (rules already
+  // sorted by CP) but keeps these for diagnostics and UI dumps.
+  int32 policy_priority = 5;
+  int32 rule_priority = 6;
+
+  Direction direction = 10;
+  RuleMatch match = 11;
+  // CONNTRACK_STATE_NONE means stateless 5-tuple match.
+  ConntrackState state = 12;
+  Action action = 13;
+
+  // Resolved logging flags. CP applies auto-log on DENY (unless silent) and
+  // explicit log on ALLOW.
+  bool log_enabled = 20;
+  // Max events/sec emitted by this rule (token bucket in BPF). 0 = no
+  // limit. Per-rule override of the global default.
+  uint32 log_rate_limit_per_sec = 21;
+}
+
+message RuleMatch {
+  Protocol protocol = 1;
+  // Empty CIDR list means "any". Concrete CIDRs come from inlined IPSet
+  // members and resolved HostSet members.
+  repeated CIDR src_cidrs = 2;
+  repeated CIDR dst_cidrs = 3;
+  // Empty port-range list means "any". Used for TCP/UDP.
+  repeated PortRange src_ports = 4;
+  repeated PortRange dst_ports = 5;
+  // TCP flag matching. tcp_flags_mask is the bits to inspect;
+  // tcp_flags_match is the required value of those bits. Both 0 means no
+  // flag filter.
+  uint32 tcp_flags_match = 6;
+  uint32 tcp_flags_mask = 7;
+}
+
+// Operational settings for the agent. Delivered initially as part of
+// Welcome, and subsequently as standalone updates.
+message ConfigUpdate {
+  uint32 heartbeat_interval_ms = 1;
+  uint32 counter_report_interval_ms = 2;
+  // Event batching: flush when either threshold is reached.
+  uint32 event_batch_size = 3;
+  uint32 event_batch_max_age_ms = 4;
+  // Default per-rule log rate-limit (events/sec). Individual rules may
+  // override via EffectiveRule.log_rate_limit_per_sec.
+  uint32 default_log_rate_limit_per_sec = 5;
+  // Master switch for flow events on this host. Even if true, flow events
+  // are emitted only by rules / policies opted-in.
+  bool flow_events_enabled = 6;
+}
+
+// CP asks the agent to disconnect and reconnect. Used for graceful CP
+// restart, sharding rebalance, or forcing a fresh handshake after server
+// config change.
+message DisconnectRequest {
+  string reason = 1;
+  // Hint for backoff: agent should wait at least this many ms before the
+  // next reconnect attempt. 0 means immediate reconnect allowed.
+  uint32 reconnect_after_ms = 2;
+}
+
+message CertRenewalResponse {
+  bool success = 1;
+  // PEM-encoded new cert. Empty on failure.
+  string cert_pem = 2;
+  string error_message = 3;
+  google.protobuf.Timestamp not_after = 4;
+}

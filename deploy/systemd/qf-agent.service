@@ -1,0 +1,19 @@
+[Unit]
+Description=qf firewall agent
+After=network.target
+Documentation=https://github.com/qf/qf
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/qf-agent
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qf-agent
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_BPF CAP_SYS_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN CAP_BPF CAP_SYS_ADMIN
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

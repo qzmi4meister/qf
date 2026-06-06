@@ -1,0 +1,56 @@
+# Go
+bin/
+*.test
+*.out
+coverage.txt
+vendor/
+
+# bpf2go outputs are committed — CI uses them without re-generating.
+# Re-run `make generate` after changing BPF C source.
+# sqlc gen is also committed — run `sqlc generate` in cp/ after schema changes.
+proto/**/*.pb.go
+proto/**/*_grpc.pb.go
+
+# BPF intermediate build artifacts (make bpf output dir)
+agent/bpf/.output/
+
+# UI
+ui/node_modules/
+ui/dist/
+# Built UI assets embedded in CP (placeholder index.html is committed)
+cp/internal/embeddedui/dist/assets/
+cp/internal/embeddedui/dist/*.js
+cp/internal/embeddedui/dist/*.css
+
+# Secrets / local config
+*.env
+.env.*
+!.env.example
+cp/master.key
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent meta / backlog (local planning artifacts)
+.agents-meta/
+
+# Local tooling / IDE plugins
+.antigravitycli/
+
+# Build artifacts — published via GitHub Releases / registry, not committed
+deploy/helm/*.tgz
+deploy/packaging/deb/*.deb
+deploy/packaging/rpm/*.rpm
+
+# Runtime logs
+errors.log
+qf-agent

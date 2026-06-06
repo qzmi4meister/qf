@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package qf.v1;
+
+option go_package = "github.com/qf/qf/proto/qf/v1;qfv1";
+
+// Direction of traffic for a rule.
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_INGRESS = 1;
+  DIRECTION_EGRESS = 2;
+}
+
+// Action a rule applies on match.
+// ALLOW and DENY are terminal verdicts; LOG is non-terminal (logs and
+// continues rule evaluation).
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_ALLOW = 1;
+  ACTION_DENY = 2;
+  ACTION_LOG = 3;
+}
+
+// Optional state predicate on a rule (conntrack-based).
+// CONNTRACK_STATE_NONE means stateless 5-tuple match (no conntrack lookup).
+enum ConntrackState {
+  CONNTRACK_STATE_UNSPECIFIED = 0;
+  CONNTRACK_STATE_NONE = 1;
+  CONNTRACK_STATE_NEW = 2;
+  CONNTRACK_STATE_ESTABLISHED = 3;
+  CONNTRACK_STATE_RELATED = 4;
+  CONNTRACK_STATE_INVALID = 5;
+}
+
+// L4 protocol for rule matching.
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_ANY = 1;
+  PROTOCOL_TCP = 2;
+  PROTOCOL_UDP = 3;
+  PROTOCOL_ICMP = 4;
+  PROTOCOL_ICMPV6 = 5;
+}
+
+// How the agent attached its eBPF program on a given interface.
+enum AttachMode {
+  ATTACH_MODE_UNSPECIFIED = 0;
+  ATTACH_MODE_NONE = 1;     // not attached (interface ignored)
+  ATTACH_MODE_TCX = 2;      // kernel >= 6.6, chain coexistence
+  ATTACH_MODE_LEGACY = 3;   // clsact + filter, single-slot
+}
+
+// A CIDR block.
+// `ip` is 4 bytes for IPv4 or 16 bytes for IPv6.
+message CIDR {
+  bytes ip = 1;
+  uint32 prefix_len = 2;
+}
+
+// A port range. For a single port, start == end.
+message PortRange {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+
+// Interface attachment information reported by the agent.
+message InterfaceInfo {
+  string name = 1;             // e.g. eth0, bond0, eno1
+  AttachMode attach_mode = 2;
+  // Human-readable position in the tcx chain for debugging.
+  // Example: "before:cilium-from-netdev".
+  string chain_position = 3;
+}
