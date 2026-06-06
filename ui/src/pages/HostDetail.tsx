@@ -4,13 +4,14 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Stack, Title, Tabs, Badge, Group, Text, Table, TextInput, Loader, Center, Anchor,
-  Card, Grid, Select as MSelect, Button, Switch,
+  Card, Grid, Select as MSelect, Button, Switch, Modal, ActionIcon,
 } from '@mantine/core'
-import { IconSearch, IconDownload } from '@tabler/icons-react'
+import { IconSearch, IconDownload, IconEdit, IconPlus, IconX } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMutation } from '@tanstack/react-query'
 import { getHost, listEvents, listFlows, latestCounters, getHostRuleset, patchHost } from '../api/hosts'
 import type { LogEvent, RulesetRuleItem } from '../types'
+import { notifications } from '@mantine/notifications'
 
 function statusColor(s: string) {
   return s === 'active' ? 'green' : s === 'offline' ? 'gray' : s === 'error' ? 'red' : 'yellow'
@@ -31,6 +32,19 @@ export default function HostDetail() {
   const flowMut = useMutation({
     mutationFn: (enabled: boolean) => patchHost(id!, { flow_events_enabled: enabled }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['host', id] }),
+  })
+
+  const [editLabelsOpen, setEditLabelsOpen] = useState(false)
+  const [editLabelPairs, setEditLabelPairs] = useState<{ key: string; val: string }[]>([])
+  const labelsMut = useMutation({
+    mutationFn: (pairs: { key: string; val: string }[]) =>
+      patchHost(id!, { labels: Object.fromEntries(pairs.filter(p => p.key).map(p => [p.key, p.val])) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['host', id] })
+      setEditLabelsOpen(false)
+      notifications.show({ message: 'Labels saved', color: 'green' })
+    },
+    onError: () => notifications.show({ message: 'Save failed', color: 'red' }),
   })
   const { data: events = [] } = useQuery({
     queryKey: ['events', id],
@@ -122,7 +136,15 @@ export default function HostDetail() {
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Card withBorder>
                 <Stack gap="xs">
-                  <Text fw={600}>Labels</Text>
+                  <Group justify="space-between">
+                    <Text fw={600}>Labels</Text>
+                    <ActionIcon size="sm" variant="subtle" onClick={() => {
+                      setEditLabelPairs(Object.entries(host.labels).map(([key, val]) => ({ key, val })))
+                      setEditLabelsOpen(true)
+                    }}>
+                      <IconEdit size={14} />
+                    </ActionIcon>
+                  </Group>
                   {Object.entries(host.labels).length === 0 ? (
                     <Text size="sm" c="dimmed">No labels</Text>
                   ) : (
@@ -248,6 +270,43 @@ export default function HostDetail() {
           </Table>
         </Tabs.Panel>
       </Tabs>
+
+      <Modal
+        opened={editLabelsOpen}
+        onClose={() => setEditLabelsOpen(false)}
+        title="Edit labels"
+      >
+        <Stack gap="xs">
+          {editLabelPairs.map((pair, i) => (
+            <Group key={i} gap="xs">
+              <TextInput
+                placeholder="key"
+                value={pair.key}
+                onChange={(e) => { const n = [...editLabelPairs]; n[i] = { ...pair, key: e.currentTarget.value }; setEditLabelPairs(n) }}
+                style={{ flex: 1 }}
+                size="sm"
+              />
+              <TextInput
+                placeholder="value"
+                value={pair.val}
+                onChange={(e) => { const n = [...editLabelPairs]; n[i] = { ...pair, val: e.currentTarget.value }; setEditLabelPairs(n) }}
+                style={{ flex: 1 }}
+                size="sm"
+              />
+              <ActionIcon color="red" variant="subtle" size="sm" onClick={() => setEditLabelPairs(editLabelPairs.filter((_, j) => j !== i))}>
+                <IconX size={14} />
+              </ActionIcon>
+            </Group>
+          ))}
+          <Button size="xs" variant="subtle" leftSection={<IconPlus size={12} />} onClick={() => setEditLabelPairs([...editLabelPairs, { key: '', val: '' }])}>
+            Add label
+          </Button>
+          <Group justify="flex-end" mt="sm">
+            <Button variant="subtle" onClick={() => setEditLabelsOpen(false)}>Cancel</Button>
+            <Button loading={labelsMut.isPending} onClick={() => labelsMut.mutate(editLabelPairs)}>Save</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   )
 }

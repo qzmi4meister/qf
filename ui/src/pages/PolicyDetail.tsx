@@ -5,16 +5,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Stack, Title, Tabs, Button, TextInput, Textarea, NumberInput, Table, Badge,
   Group, Text, Anchor, ActionIcon, Modal, Select, Checkbox, Loader, Center,
-  Accordion, Code, Paper, Alert,
+  Accordion, Code, Paper, Alert, Divider,
 } from '@mantine/core'
 import {
   IconPlus, IconTrash, IconEdit, IconPlayerPlay, IconHistory, IconArrowBack,
-  IconAlertCircle, IconX,
+  IconAlertCircle, IconX, IconUsers,
 } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { getPolicy, updatePolicy, createPolicy, previewPolicy, listVersions, revertVersion } from '../api/policies'
 import { listObjectGroups } from '../api/objectgroups'
-import type { Rule, PreviewResult } from '../types'
+import { listHosts, patchHost } from '../api/hosts'
+import type { Rule, PreviewResult, Host, ObjectGroup } from '../types'
 
 interface KVPair { key: string; val: string }
 
@@ -251,6 +252,65 @@ export default function PolicyDetail() {
     },
   })
 
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [selectedHostId, setSelectedHostId] = useState<string | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+
+  const { data: allHosts = [] } = useQuery<Host[]>({
+    queryKey: ['hosts'],
+    queryFn: listHosts,
+    enabled: assignOpen,
+  })
+  const { data: allGroups = [] } = useQuery<ObjectGroup[]>({
+    queryKey: ['objectgroups'],
+    queryFn: listObjectGroups,
+    enabled: assignOpen,
+  })
+
+  const hostSetGroups = allGroups.filter(g => g.type === 'hostset')
+
+  const currentSelector = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
+
+  const matchedHosts = allHosts.filter(h =>
+    Object.entries(currentSelector).every(([k, v]) => h.labels[k] === v)
+  )
+
+  async function assignHost(host: Host) {
+    const newLabels = { ...host.labels, hostname: host.hostname }
+    await patchHost(host.id, { labels: newLabels })
+    const newSelector = { ...currentSelector, hostname: host.hostname }
+    const newPairs = Object.entries(newSelector).map(([key, val]) => ({ key, val }))
+    setSelectorLabels(newPairs)
+    await saveMut.mutateAsync()
+    qc.invalidateQueries({ queryKey: ['hosts'] })
+    setSelectedHostId(null)
+    notifications.show({ message: `Assigned to ${host.hostname}`, color: 'green' })
+  }
+
+  async function assignGroup(group: ObjectGroup) {
+    const spec = (group.spec ?? {}) as Record<string, unknown>
+    const matchLabels = ((spec.selector as Record<string, unknown>)?.matchLabels ?? {}) as Record<string, string>
+    if (Object.keys(matchLabels).length === 0) {
+      notifications.show({ message: 'Host group has no selector labels', color: 'red' })
+      return
+    }
+    const newSelector = { ...currentSelector, ...matchLabels }
+    const newPairs = Object.entries(newSelector).map(([key, val]) => ({ key, val }))
+    setSelectorLabels(newPairs)
+    await saveMut.mutateAsync()
+    setSelectedGroupId(null)
+    notifications.show({ message: `Selector updated from group "${group.name}"`, color: 'green' })
+  }
+
+  async function unassignHost(host: Host) {
+    const removedKeys = Object.keys(currentSelector)
+    const newLabels = { ...host.labels }
+    removedKeys.forEach(k => { if (newLabels[k] === currentSelector[k]) delete newLabels[k] })
+    await patchHost(host.id, { labels: newLabels })
+    qc.invalidateQueries({ queryKey: ['hosts'] })
+    notifications.show({ message: `Unassigned from ${host.hostname}`, color: 'green' })
+  }
+
   async function handlePreview() {
     if (!id || isNew) return
     setPreviewLoading(true)
@@ -441,6 +501,15 @@ export default function PolicyDetail() {
                   Preview impact
                 </Button>
               )}
+              {!isNew && (
+                <Button
+                  variant="outline"
+                  leftSection={<IconUsers size={14} />}
+                  onClick={() => setAssignOpen(true)}
+                >
+                  Assign to hosts
+                </Button>
+              )}
               <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>
                 Save policy
               </Button>
@@ -482,6 +551,94 @@ export default function PolicyDetail() {
           </Tabs.Panel>
         )}
       </Tabs>
+
+      <Modal
+        opened={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title="Assign to hosts"
+        size="md"
+      >
+        <Stack gap="md">
+          {matchedHosts.length > 0 && (
+            <div>
+              <Text size="sm" fw={500} mb="xs">Currently assigned ({matchedHosts.length})</Text>
+              <Stack gap="xs">
+                {matchedHosts.map(h => (
+                  <Group key={h.id} justify="space-between">
+                    <Badge variant="outline">{h.hostname}</Badge>
+                    <ActionIcon
+                      size="sm"
+                      color="red"
+                      variant="subtle"
+                      title="Unassign"
+                      onClick={() => unassignHost(h)}
+                    >
+                      <IconX size={12} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+              </Stack>
+              <Divider mt="sm" />
+            </div>
+          )}
+
+          <div>
+            <Text size="sm" fw={500} mb="xs">Assign single host</Text>
+            <Group>
+              <Select
+                placeholder="Search host by name…"
+                searchable
+                clearable
+                data={allHosts.map(h => ({ value: h.id, label: h.hostname }))}
+                value={selectedHostId}
+                onChange={setSelectedHostId}
+                style={{ flex: 1 }}
+                size="sm"
+              />
+              <Button
+                size="sm"
+                disabled={!selectedHostId}
+                loading={saveMut.isPending}
+                onClick={() => {
+                  const h = allHosts.find(x => x.id === selectedHostId)
+                  if (h) assignHost(h)
+                }}
+              >
+                Assign
+              </Button>
+            </Group>
+          </div>
+
+          <Divider />
+
+          <div>
+            <Text size="sm" fw={500} mb="xs">Assign host group</Text>
+            <Text size="xs" c="dimmed" mb="xs">Copies the group's label selector into the policy selector</Text>
+            <Group>
+              <Select
+                placeholder="Select host group…"
+                clearable
+                data={hostSetGroups.map(g => ({ value: g.id, label: g.name }))}
+                value={selectedGroupId}
+                onChange={setSelectedGroupId}
+                style={{ flex: 1 }}
+                size="sm"
+              />
+              <Button
+                size="sm"
+                disabled={!selectedGroupId}
+                loading={saveMut.isPending}
+                onClick={() => {
+                  const g = hostSetGroups.find(x => x.id === selectedGroupId)
+                  if (g) assignGroup(g)
+                }}
+              >
+                Assign
+              </Button>
+            </Group>
+          </div>
+        </Stack>
+      </Modal>
 
       <Modal
         opened={previewOpen}
