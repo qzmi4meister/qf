@@ -6,11 +6,12 @@ import {
   Stack, Title, Tabs, Badge, Group, Text, Table, TextInput, Loader, Center, Anchor,
   Card, Grid, Select as MSelect, Button, Switch, Modal, ActionIcon,
 } from '@mantine/core'
-import { IconSearch, IconDownload, IconEdit, IconPlus, IconX } from '@tabler/icons-react'
+import { IconSearch, IconDownload, IconEdit, IconPlus, IconX, IconShield } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMutation } from '@tanstack/react-query'
 import { getHost, listEvents, listFlows, latestCounters, getHostRuleset, patchHost } from '../api/hosts'
-import type { LogEvent, RulesetRuleItem } from '../types'
+import { listPolicies } from '../api/policies'
+import type { LogEvent, RulesetRuleItem, Policy } from '../types'
 import { notifications } from '@mantine/notifications'
 
 function statusColor(s: string) {
@@ -68,9 +69,23 @@ export default function HostDetail() {
     queryFn: () => getHostRuleset(id!),
     enabled: !!id,
   })
+  const { data: allPolicies = [] } = useQuery<Policy[]>({
+    queryKey: ['policies'],
+    queryFn: listPolicies,
+    enabled: !!id,
+  })
 
   if (isLoading) return <Center h={200}><Loader /></Center>
   if (!host) return <Text c="red">Host not found</Text>
+
+  const matchedPolicies = allPolicies.filter(p => {
+    const sel = (p.selector ?? {}) as Record<string, unknown>
+    const ml: Record<string, string> = (sel.matchLabels && typeof sel.matchLabels === 'object')
+      ? sel.matchLabels as Record<string, string>
+      : sel as Record<string, string>
+    const keys = Object.keys(ml)
+    return keys.length > 0 && keys.every(k => host.labels[k] === ml[k])
+  })
 
   const filteredEvents = events.filter((e) => {
     const matchAction = !actionFilter || e.action === actionFilter
@@ -93,6 +108,9 @@ export default function HostDetail() {
       <Tabs defaultValue="overview">
         <Tabs.List>
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
+          <Tabs.Tab value="policies" leftSection={<IconShield size={14} />}>
+            Policies {matchedPolicies.length > 0 && <Badge size="xs" ml={4}>{matchedPolicies.length}</Badge>}
+          </Tabs.Tab>
           <Tabs.Tab value="ruleset">Ruleset</Tabs.Tab>
           <Tabs.Tab value="events">Events</Tabs.Tab>
           <Tabs.Tab value="flows">Flows</Tabs.Tab>
@@ -159,6 +177,42 @@ export default function HostDetail() {
               </Card>
             </Grid.Col>
           </Grid>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="policies" pt="md">
+          <Table highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Priority</Table.Th>
+                <Table.Th>Description</Table.Th>
+                <Table.Th>Updated</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {matchedPolicies.map(p => (
+                <Table.Tr key={p.id}>
+                  <Table.Td>
+                    <Anchor component={Link} to={`/policies/${p.id}`} size="sm">{p.name}</Anchor>
+                  </Table.Td>
+                  <Table.Td>{p.priority}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed" lineClamp={1}>{p.description || '—'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed">{fmtDateTime(p.updated_at)}</Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {matchedPolicies.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={4}>
+                    <Text c="dimmed" ta="center" size="sm" py="md">No policies assigned to this host</Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
         </Tabs.Panel>
 
         <Tabs.Panel value="ruleset" pt="md">
