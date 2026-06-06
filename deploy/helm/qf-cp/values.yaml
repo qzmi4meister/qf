@@ -1,12 +1,11 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/YOUR_ORG/qf-cp
+  repository: ghcr.io/qzmi4meister/qf-cp
   tag: ""  # defaults to Chart.AppVersion
   pullPolicy: Always
 
 imagePullSecrets: []
-# - name: ghcr-secret
 
 service:
   type: ClusterIP
