@@ -1,4 +1,6 @@
 #!/bin/bash
 set -e
+mkdir -p /etc/qf/pki
+chmod 700 /etc/qf/pki
 systemctl daemon-reload
 systemctl enable qf-agent
