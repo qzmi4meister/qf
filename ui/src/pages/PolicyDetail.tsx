@@ -269,19 +269,33 @@ export default function PolicyDetail() {
 
   const hostSetGroups = allGroups.filter(g => g.type === 'hostset')
 
-  const currentSelector = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
+  // Extract flat matchLabels from policy selector regardless of nesting format.
+  // Policies created via UI: {hostname: 'foo'}
+  // Policies created via API: {matchLabels: {hostname: 'foo'}}
+  function getPolicyMatchLabels(): Record<string, string> {
+    const sel = (policy?.selector ?? {}) as Record<string, unknown>
+    if (sel.matchLabels && typeof sel.matchLabels === 'object') {
+      return sel.matchLabels as Record<string, string>
+    }
+    return sel as Record<string, string>
+  }
 
-  const matchedHosts = allHosts.filter(h =>
-    Object.entries(currentSelector).every(([k, v]) => h.labels[k] === v)
-  )
+  const matchedHosts = allHosts.filter(h => {
+    const ml = getPolicyMatchLabels()
+    return Object.keys(ml).length > 0 && Object.entries(ml).every(([k, v]) => h.labels[k] === v)
+  })
+
+  async function savePolicyWithSelector(newMatchLabels: Record<string, string>) {
+    const newSelector = { matchLabels: newMatchLabels }
+    await updatePolicy(id!, { name, description, priority, selector: newSelector, rules })
+    setSelectorLabels(Object.entries(newMatchLabels).map(([key, val]) => ({ key, val })))
+    qc.invalidateQueries({ queryKey: ['policy', id] })
+  }
 
   async function assignHost(host: Host) {
-    const newLabels = { ...host.labels, hostname: host.hostname }
-    await patchHost(host.id, { labels: newLabels })
-    const newSelector = { ...currentSelector, hostname: host.hostname }
-    const newPairs = Object.entries(newSelector).map(([key, val]) => ({ key, val }))
-    setSelectorLabels(newPairs)
-    await saveMut.mutateAsync()
+    await patchHost(host.id, { labels: { ...host.labels, hostname: host.hostname } })
+    const newMatchLabels = { ...getPolicyMatchLabels(), hostname: host.hostname }
+    await savePolicyWithSelector(newMatchLabels)
     qc.invalidateQueries({ queryKey: ['hosts'] })
     setSelectedHostId(null)
     notifications.show({ message: `Assigned to ${host.hostname}`, color: 'green' })
@@ -289,23 +303,21 @@ export default function PolicyDetail() {
 
   async function assignGroup(group: ObjectGroup) {
     const spec = (group.spec ?? {}) as Record<string, unknown>
-    const matchLabels = ((spec.selector as Record<string, unknown>)?.matchLabels ?? {}) as Record<string, string>
-    if (Object.keys(matchLabels).length === 0) {
+    const groupMatchLabels = ((spec.selector as Record<string, unknown>)?.matchLabels ?? {}) as Record<string, string>
+    if (Object.keys(groupMatchLabels).length === 0) {
       notifications.show({ message: 'Host group has no selector labels', color: 'red' })
       return
     }
-    const newSelector = { ...currentSelector, ...matchLabels }
-    const newPairs = Object.entries(newSelector).map(([key, val]) => ({ key, val }))
-    setSelectorLabels(newPairs)
-    await saveMut.mutateAsync()
+    const newMatchLabels = { ...getPolicyMatchLabels(), ...groupMatchLabels }
+    await savePolicyWithSelector(newMatchLabels)
     setSelectedGroupId(null)
     notifications.show({ message: `Selector updated from group "${group.name}"`, color: 'green' })
   }
 
   async function unassignHost(host: Host) {
-    const removedKeys = Object.keys(currentSelector)
+    const ml = getPolicyMatchLabels()
     const newLabels = { ...host.labels }
-    removedKeys.forEach(k => { if (newLabels[k] === currentSelector[k]) delete newLabels[k] })
+    Object.entries(ml).forEach(([k, v]) => { if (newLabels[k] === v) delete newLabels[k] })
     await patchHost(host.id, { labels: newLabels })
     qc.invalidateQueries({ queryKey: ['hosts'] })
     notifications.show({ message: `Unassigned from ${host.hostname}`, color: 'green' })
