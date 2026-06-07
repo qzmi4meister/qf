@@ -9,7 +9,7 @@ BUF ?= buf
 
 # Packaging / images
 QF_VERSION  := $(shell sed -n 's/.*Version = "\([^"]*\)".*/\1/p' version/version.go)
-PKG_ARCH    := $(shell go env GOARCH)
+PKG_ARCH    := amd64
 QF_IMAGE    ?= localhost/qf-cp
 HELM_REGISTRY ?= oci://ghcr.io/YOUR_ORG/helm
 
@@ -29,9 +29,9 @@ proto:
 bpf:
 	$(MAKE) -C agent/bpf
 
-# Build Go binaries. Depends on generated files being present.
+# Build Go binaries. Cross-compiles linux/amd64 regardless of host platform.
 build:
-	go build ./agent/cmd/qf-agent/
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o qf-agent ./agent/cmd/qf-agent/
 
 # Build CP binary (after ui-build).
 build-cp:
