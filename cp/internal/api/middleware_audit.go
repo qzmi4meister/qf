@@ -9,13 +9,28 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	authpkg "github.com/qf/qf/cp/internal/auth"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
+// auditBeforeVal is a writable slot injected into context by auditMiddleware.
+// Handlers call SetAuditBefore to populate it before applying changes.
+type auditBeforeVal struct{ data []byte }
+
+type auditCtxKey struct{}
+
+// SetAuditBefore records the current resource state for the audit log.
+// Call from PUT/PATCH handlers before applying changes.
+func SetAuditBefore(ctx context.Context, data []byte) {
+	if v, ok := ctx.Value(auditCtxKey{}).(*auditBeforeVal); ok {
+		v.data = data
+	}
+}
+
 // auditMiddleware records POST/PUT/PATCH/DELETE mutations to audit_log.
-// Actor identity comes from X-Actor-ID + X-Actor-Type headers.
-// "after" is captured from the response body; "before" is not queried
-// at middleware level (requires explicit before-capture in handlers).
+// Actor identity is read from JWT/API-token Claims in context.
+// "after" is captured from the response body; "before" is populated by handlers
+// via SetAuditBefore before applying changes.
 type auditMiddleware struct {
 	q *storegen.Queries
 }
@@ -32,6 +47,9 @@ func (am *auditMiddleware) wrap(next http.Handler) http.Handler {
 			return
 		}
 
+		beforeVal := &auditBeforeVal{}
+		r = r.WithContext(context.WithValue(r.Context(), auditCtxKey{}, beforeVal))
+
 		ww := &captureWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(ww, r)
 
@@ -39,18 +57,22 @@ func (am *auditMiddleware) wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		tenantRaw := r.Header.Get("X-Tenant-ID")
-		var tenantUUID pgtype.UUID
-		if err := tenantUUID.Scan(tenantRaw); err != nil {
+		claims := authpkg.ClaimsFromCtx(r.Context())
+		if claims == nil {
 			return
 		}
 
-		actorType := r.Header.Get("X-Actor-Type")
-		if actorType == "" {
-			actorType = "api_token"
+		var tenantUUID pgtype.UUID
+		if err := tenantUUID.Scan(claims.TenantID); err != nil {
+			return
+		}
+
+		actorType := "api_token"
+		if claims.Email != "" {
+			actorType = "user"
 		}
 		var actorUUID pgtype.UUID
-		_ = actorUUID.Scan(r.Header.Get("X-Actor-ID"))
+		_ = actorUUID.Scan(claims.UserID)
 
 		objectType, objectUUID := extractObjectFromPath(r.URL.Path)
 		action := r.Method + " " + r.URL.Path
@@ -59,6 +81,8 @@ func (am *auditMiddleware) wrap(next http.Handler) http.Handler {
 		if ww.body.Len() > 0 && r.Method != http.MethodDelete {
 			after = ww.body.Bytes()
 		}
+
+		before := beforeVal.data
 
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -70,7 +94,7 @@ func (am *auditMiddleware) wrap(next http.Handler) http.Handler {
 				Action:     action,
 				ObjectType: objectType,
 				ObjectID:   objectUUID,
-				Before:     nil,
+				Before:     before,
 				After:      after,
 			})
 		}()
@@ -98,18 +122,12 @@ func (cw *captureWriter) Write(b []byte) (int, error) {
 var uuidSegment = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // extractObjectFromPath returns the object type name and UUID from a URL path.
-// Examples:
-//
-//	/hosts/uuid      → ("host", uuid)
-//	/policies/uuid   → ("policy", uuid)
-//	/tokens          → ("token", pgtype.UUID{})
 func extractObjectFromPath(path string) (objectType string, objectID pgtype.UUID) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) == 0 {
 		return "unknown", pgtype.UUID{}
 	}
 
-	// Map first path segment to object type.
 	typeMap := map[string]string{
 		"hosts":          "host",
 		"policies":       "policy",
@@ -123,11 +141,9 @@ func extractObjectFromPath(path string) (objectType string, objectID pgtype.UUID
 		objectType = parts[0]
 	}
 
-	// Walk parts in reverse to find the last UUID segment.
 	for i := len(parts) - 1; i >= 0; i-- {
 		if uuidSegment.MatchString(parts[i]) {
 			_ = objectID.Scan(parts[i])
-			// Refine object type for nested resources.
 			if i > 0 {
 				if sub, ok := typeMap[parts[i-1]]; ok {
 					objectType = sub

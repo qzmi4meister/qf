@@ -415,7 +415,7 @@ export default function PolicyDetail() {
                 </Table.Thead>
                 <Table.Tbody>
                   {rules.map((r, i) => (
-                    <Table.Tr key={i} style={editRuleIdx === i ? { background: 'var(--mantine-color-blue-0)' } : undefined}>
+                    <Table.Tr key={i} style={editRuleIdx === i ? { background: 'var(--mantine-color-blue-light)' } : undefined}>
                       <Table.Td>{r.priority}</Table.Td>
                       <Table.Td>{r.name || <Text c="dimmed" size="sm">unnamed</Text>}</Table.Td>
                       <Table.Td><Badge size="sm" variant="outline">{r.direction}</Badge></Table.Td>

@@ -198,6 +198,15 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "name required")
 		return
 	}
+
+	// Capture current state for audit log before.
+	if cur, err := h.q.GetPolicy(r.Context(), storegen.GetPolicyParams{ID: policyUUID, TenantID: tenantUUID}); err == nil {
+		curRules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+		if b, jerr := json.Marshal(toPolicyDetailResponse(cur, curRules)); jerr == nil {
+			SetAuditBefore(r.Context(), b)
+		}
+	}
+
 	policy, err := h.q.UpdatePolicy(r.Context(), storegen.UpdatePolicyParams{
 		ID:          policyUUID,
 		TenantID:    tenantUUID,

@@ -133,6 +133,18 @@ func (s *EnrollmentServer) Enroll(ctx context.Context, req *qfv1.EnrollRequest) 
 		}
 	}
 
+	go func() {
+		actx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = s.queries.InsertAuditLog(actx, storegen.InsertAuditLogParams{
+			TenantID:   tenantUUID,
+			ActorType:  "agent",
+			ObjectType: "host",
+			ObjectID:   hostUUID,
+			Action:     "agent.enrolled",
+		})
+	}()
+
 	bundlePubPEM, err := marshalPublicKeyPEM(s.signer.PublicKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "marshal bundle pub key: %v", err)

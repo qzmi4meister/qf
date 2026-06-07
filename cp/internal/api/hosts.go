@@ -171,6 +171,13 @@ func (h *hostHandler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture current state for audit log before.
+	if cur, err := h.q.GetHost(r.Context(), storegen.GetHostParams{ID: hostUUID, TenantID: tenantUUID}); err == nil {
+		if b, jerr := json.Marshal(toHostResponse(cur)); jerr == nil {
+			SetAuditBefore(r.Context(), b)
+		}
+	}
+
 	var host storegen.Host
 	var err error
 
