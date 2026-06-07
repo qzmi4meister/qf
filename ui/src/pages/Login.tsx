@@ -46,7 +46,7 @@ export default function Login() {
   }
 
   return (
-    <Center h="100vh" bg="gray.0">
+    <Center h="100vh" style={{ background: 'var(--mantine-color-body)' }}>
       <Paper w={360} p="xl" withBorder shadow="md">
         <Stack gap="md">
           <Stack gap={4} align="center">
