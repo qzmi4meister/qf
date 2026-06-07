@@ -111,7 +111,7 @@ release-agent: pkg-agent
 
 # Deploy agent to all hosts (or specific host: make deploy-agent target=hbfw2).
 # Requires: ansible (pip install ansible)
-ANSIBLE_INVENTORY ?= deploy/ansible/inventory.yml
+ANSIBLE_INVENTORY ?= .agents-meta/ansible-inventory.yml
 deploy-agent:
 	ansible-playbook -i $(ANSIBLE_INVENTORY) deploy/ansible/deploy-agent.yml \
 		$(if $(target),--limit $(target),)
