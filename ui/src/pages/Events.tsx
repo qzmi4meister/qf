@@ -174,7 +174,7 @@ export default function Events() {
           onMouseLeave={() => setPaused(false)}
         >
           <Table highlightOnHover>
-            <Table.Thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
+            <Table.Thead style={{ position: 'sticky', top: 0, background: 'var(--mantine-color-body)', zIndex: 1 }}>
               <Table.Tr>
                 <Table.Th>Time</Table.Th>
                 <Table.Th>Action</Table.Th>
