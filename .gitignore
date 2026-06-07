@@ -53,4 +53,4 @@ deploy/packaging/rpm/*.rpm
 
 # Runtime logs
 errors.log
-qf-agent
+/qf-agent

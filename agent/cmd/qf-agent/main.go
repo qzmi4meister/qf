@@ -27,6 +27,12 @@ func main() {
 
 	setupLogging(cfg.LogLevel)
 
+	if loader.KernelVersion() < loader.KernelVer(5, 15, 0) {
+		slog.Error("kernel too old: qf-agent requires Linux 5.15 or newer",
+			"kernel", loader.KernelVersion())
+		os.Exit(1)
+	}
+
 	l, err := loader.Load(cfg.Interface)
 	if err != nil {
 		slog.Error("BPF load failed", "iface", cfg.Interface, "err", err)
