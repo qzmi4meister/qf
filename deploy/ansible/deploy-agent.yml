@@ -1,6 +1,6 @@
 ---
 - name: Deploy qf-agent
   hosts: "{{ target | default('qf_agents') }}"
-  gather_facts: false
+  gather_facts: true
   roles:
     - qf-agent

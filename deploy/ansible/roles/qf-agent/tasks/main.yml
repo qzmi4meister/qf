@@ -9,19 +9,38 @@
     msg: "Kernel {{ kernel_ver.stdout }} is too old. qf-agent requires Linux 5.15+"
   when: kernel_ver.stdout is version('5.15', '<', version_type='loose')
 
+# --- Debian / Ubuntu ---
 - name: Download qf-agent deb
   ansible.builtin.get_url:
     url: "{{ qf_agent_deb_url }}"
     dest: "{{ qf_agent_deb_dest }}"
     mode: "0644"
+  when: ansible_pkg_mgr == 'apt'
 
-- name: Install qf-agent
+- name: Install qf-agent deb
   ansible.builtin.apt:
     deb: "{{ qf_agent_deb_dest }}"
     force: true
   environment:
     DPKG_FORCE: confold
+  when: ansible_pkg_mgr == 'apt'
 
+# --- RHEL / CentOS / Fedora ---
+- name: Download qf-agent rpm
+  ansible.builtin.get_url:
+    url: "{{ qf_agent_rpm_url }}"
+    dest: "{{ qf_agent_rpm_dest }}"
+    mode: "0644"
+  when: ansible_pkg_mgr in ['dnf', 'yum']
+
+- name: Install qf-agent rpm
+  ansible.builtin.dnf:
+    name: "{{ qf_agent_rpm_dest }}"
+    state: present
+    disable_gpg_check: true
+  when: ansible_pkg_mgr in ['dnf', 'yum']
+
+# --- Common ---
 - name: Ensure qf-agent is started and enabled
   ansible.builtin.systemd:
     name: qf-agent
