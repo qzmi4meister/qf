@@ -109,6 +109,13 @@ release-agent: pkg-agent
 	gh release upload v$(QF_VERSION) deploy/packaging/deb/qf-agent_$(QF_VERSION)_*.deb --clobber
 	gh release upload v$(QF_VERSION) deploy/packaging/rpm/qf-agent-$(QF_VERSION).*.rpm --clobber
 
+# Deploy agent to all hosts (or specific host: make deploy-agent target=hbfw2).
+# Requires: ansible (pip install ansible)
+ANSIBLE_INVENTORY ?= .agents-meta/ansible-inventory.yml
+deploy-agent:
+	~/venv/ansible-default/bin/ansible-playbook -i $(ANSIBLE_INVENTORY) deploy/ansible/deploy-agent.yml \
+		$(if $(target),--limit $(target),)
+
 clean:
 	$(MAKE) -C agent/bpf clean
 	rm -f qf-agent qf-cp
