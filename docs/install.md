@@ -1,327 +1,499 @@
-# qf Installation Guide
+# qf — Deployment Guide
 
 ## Overview
 
-qf consists of two components:
-
-- **qf-cp** — control plane (Go binary or container); requires PostgreSQL
-- **qf-agent** — firewall agent (Go binary, eBPF); runs on each protected Linux host
-
-Three deployment scenarios are covered below.
+| Component | What it is |
+|---|---|
+| **qf-cp** | Control plane — REST API, Web UI, gRPC server, PKI, policy compiler. Requires PostgreSQL. |
+| **qf-agent** | Firewall agent — eBPF/TC datapath, runs on each protected Linux host. Requires kernel ≥ 5.15. |
 
 ---
 
-## Scenario 1: Standalone Linux (binary)
+## 1. Control Plane in Kubernetes (Helm)
 
-Run qf-cp directly on a Linux server with PostgreSQL, then install qf-agent on managed hosts.
+### Prerequisites
 
-### 1.1 Prerequisites
+- Kubernetes 1.24+
+- PostgreSQL 14+ accessible from the cluster
+- Helm 3.10+
+- The CP needs a **PersistentVolume** for PKI storage (CA, certs, bundle signing key)
 
-- Linux x86_64 or arm64
-- PostgreSQL 14+
-- Go 1.22+ (to build from source) or pre-built binaries from GitHub Releases
+### 1.1 Prepare values file
 
-### 1.2 Set up PostgreSQL
+Create `values-prod.yaml` (do not commit to git):
+
+```yaml
+image:
+  repository: ghcr.io/qzmi4meister/qf-cp
+  pullPolicy: Always
+
+secrets:
+  dbDSN: "postgres://qf:PASSWORD@postgres.qf.svc.cluster.local:5432/qf"
+  masterKey: "GENERATE_WITH: openssl rand -hex 32"
+  jwtSecret: "GENERATE_WITH: openssl rand -hex 32"
+  adminEmail: "admin@example.com"
+  adminPassword: "CHANGE_ME"
+
+env:
+  QF_CP_HOST: "qf.example.com"          # hostname in TLS SAN; agents connect using this name
+  QF_CP_ENDPOINT: "qf.example.com:31444" # enrollment address advertised to agents
+  QF_GRPC_ADDR: ":8443"
+  QF_ENROLL_ADDR: ":8444"
+  QF_HTTP_ADDR: ":8080"
+  QF_PKI_DIR: /etc/qf/pki
+  QF_LOG_LEVEL: info
+
+pki:
+  persistentVolume:
+    storageClass: "longhorn"   # or your storage class; "" = cluster default
+    size: 1Gi
+
+service:
+  type: ClusterIP   # or NodePort / LoadBalancer — see section 1.3
+
+ingress:
+  enabled: true
+  className: "traefik"          # or nginx
+  host: qf.example.com
+  tls:
+    - secretName: qf-cp-tls
+      hosts:
+        - qf.example.com
+```
+
+Generate secrets:
 
 ```bash
-# Create database and user
-psql -U postgres <<'SQL'
-CREATE USER qf WITH PASSWORD 'changeme';
+echo "masterKey: $(openssl rand -hex 32)"
+echo "jwtSecret: $(openssl rand -hex 32)"
+```
+
+### 1.2 Install / upgrade
+
+```bash
+helm upgrade --install qf-cp \
+  oci://ghcr.io/qzmi4meister/helm/qf-cp \
+  --version 0.8.12 \
+  --namespace qf --create-namespace \
+  -f values-prod.yaml
+```
+
+Wait for the pod:
+
+```bash
+kubectl -n qf rollout status deployment/qf-cp
+kubectl -n qf get pods
+```
+
+CP runs database migrations automatically on first start. Check logs:
+
+```bash
+kubectl -n qf logs -l app.kubernetes.io/name=qf-cp --tail=50
+```
+
+### 1.3 Expose agent ports
+
+Agents need to reach **port 8444** (enrollment) and **port 8443** (gRPC stream) on the CP.
+The Web UI (port 8080) is typically exposed via Ingress only.
+
+**Option A — NodePort** (simplest for on-prem / bare-metal):
+
+Add to values:
+
+```yaml
+service:
+  type: NodePort
+  grpcNodePort: 31443
+  enrollNodePort: 31444
+```
+
+Then set in `env`:
+
+```yaml
+env:
+  QF_CP_ENDPOINT: "<any-node-ip>:31444"
+  QF_CP_HOST: "<any-node-ip-or-hostname>"
+```
+
+**Option B — LoadBalancer** (cloud):
+
+```yaml
+service:
+  type: LoadBalancer
+```
+
+After `EXTERNAL-IP` is assigned, set `QF_CP_HOST` and `QF_CP_ENDPOINT` to that IP/hostname.
+
+**Option C — Separate Ingress for gRPC** (advanced):
+Use a TCP passthrough Ingress/Gateway for ports 8443 and 8444 alongside the HTTP Ingress for the UI.
+
+### 1.4 Verify
+
+```bash
+# Health check
+curl https://qf.example.com/healthz
+
+# Login
+curl -c cookies.txt -X POST https://qf.example.com/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"CHANGE_ME"}'
+
+# List hosts (should be empty initially)
+curl -b cookies.txt -H 'X-Tenant-ID: <tenant-id>' \
+  https://qf.example.com/hosts | jq .
+```
+
+### 1.5 Upgrade CP
+
+```bash
+helm upgrade qf-cp \
+  oci://ghcr.io/qzmi4meister/helm/qf-cp \
+  --version NEW_VERSION \
+  --namespace qf \
+  -f values-prod.yaml \
+  --set image.tag=NEW_VERSION
+```
+
+---
+
+## 2. Control Plane on a Standalone Linux Machine
+
+Run qf-cp directly as a systemd service on any Linux x86_64/arm64 server.
+
+### 2.1 Prerequisites
+
+- Linux x86_64 or arm64
+- PostgreSQL 14+ (local or remote)
+- Binary from GitHub Releases or built from source
+
+### 2.2 Install PostgreSQL and create database
+
+```bash
+# Debian/Ubuntu
+sudo apt install -y postgresql
+
+sudo -u postgres psql <<'SQL'
+CREATE USER qf WITH PASSWORD 'CHANGE_ME';
 CREATE DATABASE qf OWNER qf;
 SQL
 ```
 
-### 1.3 Generate master key
+### 2.3 Download binary
 
 ```bash
-QF_MASTER_KEY=$(openssl rand -hex 32)
-echo "QF_MASTER_KEY=$QF_MASTER_KEY"  # save this securely
+VERSION=0.8.12
+curl -LO https://github.com/qzmi4meister/qf/releases/download/v${VERSION}/qf-cp_${VERSION}_linux_amd64.tar.gz
+tar xzf qf-cp_${VERSION}_linux_amd64.tar.gz
+sudo mv qf-cp /usr/local/bin/qf-cp
+sudo chmod +x /usr/local/bin/qf-cp
 ```
 
-### 1.4 Build and run qf-cp
+Or build from source:
 
 ```bash
-# Build
-go build -o qf-cp ./cp/cmd/qf-cp/
-
-# Run
-export QF_DB_DSN="postgres://qf:changeme@localhost:5432/qf"
-export QF_MASTER_KEY="<64-char hex from step 1.3>"
-export QF_JWT_SECRET="$(openssl rand -hex 32)"
-export QF_CP_HOST="cp.example.com"   # hostname agents will use in TLS SAN
-export QF_HTTP_ADDR=":8080"
-export QF_GRPC_ADDR=":8443"
-export QF_ENROLL_ADDR=":8444"
-
-./qf-cp
+# Requires Go 1.22+, Node.js 18+
+git clone https://github.com/qzmi4meister/qf && cd qf
+make ui-build
+go build -o /usr/local/bin/qf-cp ./cp/cmd/qf-cp/
 ```
 
-qf-cp auto-runs database migrations on startup. Logs go to stderr in JSON format.
+### 2.4 Create configuration
 
-**Environment variables:**
+```bash
+sudo mkdir -p /etc/qf/pki
+sudo tee /etc/qf/cp.env <<'EOF'
+QF_DB_DSN=postgres://qf:CHANGE_ME@localhost:5432/qf
+QF_MASTER_KEY=GENERATE_WITH_openssl_rand_-hex_32
+QF_JWT_SECRET=GENERATE_WITH_openssl_rand_-hex_32
+QF_CP_HOST=qf.example.com
+QF_CP_ENDPOINT=qf.example.com:8444
+QF_HTTP_ADDR=:8080
+QF_GRPC_ADDR=:8443
+QF_ENROLL_ADDR=:8444
+QF_PKI_DIR=/etc/qf/pki
+QF_LOG_LEVEL=info
+QF_ADMIN_EMAIL=admin@example.com
+QF_ADMIN_PASSWORD=CHANGE_ME
+EOF
+sudo chmod 600 /etc/qf/cp.env
+```
 
-| Variable | Default | Description |
-|---|---|---|
-| `QF_DB_DSN` | — | PostgreSQL DSN (required) |
-| `QF_MASTER_KEY` | — | 32-byte hex key for token encryption (required) |
-| `QF_JWT_SECRET` | ephemeral | JWT signing key; set to persist sessions across restarts |
-| `QF_CP_HOST` | `localhost` | Hostname included in CP TLS certificate SAN |
-| `QF_CP_ENDPOINT` | `localhost:8444` | Enrollment endpoint advertised to agents |
-| `QF_HTTP_ADDR` | `:8080` | REST API + UI listen address |
-| `QF_GRPC_ADDR` | `:8443` | gRPC (mTLS) listen address for agents |
-| `QF_ENROLL_ADDR` | `:8444` | Enrollment gRPC listen address (plain TLS) |
-| `QF_PKI_DIR` | `/etc/qf/pki` | Directory where CA, server certs, bundle signing key are stored |
-| `QF_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `QF_FORWARDER_DSN` | — | Optional syslog-compatible DSN for event forwarding |
+Generate keys before editing:
 
-### 1.5 Create enrollment token
+```bash
+openssl rand -hex 32   # paste as QF_MASTER_KEY
+openssl rand -hex 32   # paste as QF_JWT_SECRET
+```
 
-Open the UI at `http://cp.example.com:8080` (redirects to `/app/`).
+### 2.5 Create systemd unit
+
+```bash
+sudo tee /etc/systemd/system/qf-cp.service <<'EOF'
+[Unit]
+Description=qf Control Plane
+After=network.target postgresql.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/qf/cp.env
+ExecStart=/usr/local/bin/qf-cp
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now qf-cp
+sudo systemctl status qf-cp
+```
+
+### 2.6 Verify
+
+```bash
+# Check migrations ran
+sudo journalctl -u qf-cp -n 30
+
+# Health endpoint
+curl http://localhost:8080/healthz
+
+# Web UI
+# http://qf.example.com:8080/app
+```
+
+### 2.7 Firewall
+
+Open ports so agents can reach the CP:
+
+```bash
+# ufw (Debian/Ubuntu)
+sudo ufw allow 8443/tcp comment "qf gRPC"
+sudo ufw allow 8444/tcp comment "qf enrollment"
+sudo ufw allow 8080/tcp comment "qf UI"
+```
+
+---
+
+## 3. Agent: Deploy via Ansible
+
+The Ansible role downloads the package from GitHub Releases, installs it, and starts/enables the systemd service. It supports both apt (Debian/Ubuntu) and dnf/yum (RHEL/Fedora/Rocky).
+
+### 3.1 Configure inventory
+
+Edit `deploy/ansible/inventory.yml`:
+
+```yaml
+all:
+  children:
+    qf_agents:
+      hosts:
+        web1:
+          ansible_host: 192.168.1.10
+        web2:
+          ansible_host: 192.168.1.11
+        db1:
+          ansible_host: 192.168.1.20
+      vars:
+        ansible_user: root
+        ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+```
+
+### 3.2 Configure agent before deployment
+
+The role installs the package but does **not** write `/etc/qf/agent.conf` — configure it on each host before or after deployment, or add a task to the role.
+
+Minimal `/etc/qf/agent.conf` on each target host:
+
+```ini
+QF_CP_ENDPOINT=qf.example.com:8443
+QF_ENROLL_ENDPOINT=qf.example.com:8444
+QF_ENROLL_TOKEN=<token-from-cp-ui>
+QF_IFACE=eth0
+QF_PKI_DIR=/etc/qf
+QF_LOG_LEVEL=info
+```
+
+To get an enrollment token: open the CP Web UI → **Tokens** → **New token** → copy the value.
 
 Or via API:
 
 ```bash
-# Login to get JWT
-TOKEN=$(curl -s -X POST http://cp.example.com:8080/auth/login \
+curl -s -b cookies.txt -X POST https://qf.example.com/tokens \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin"}' | jq -r .token)
-
-# Create bulk enrollment token (valid 24h, unlimited uses)
-curl -s -X POST http://cp.example.com:8080/tokens \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Tenant-ID: <tenant-uuid>" \
-  -H 'Content-Type: application/json' \
-  -d '{"label_template":{"env":"prod"},"ttl_seconds":86400,"max_uses":0}' | jq .
+  -H 'X-Tenant-ID: <tenant-id>' \
+  -d '{"label_template":{"env":"prod"},"ttl_seconds":86400,"max_uses":0}' | jq -r .token
 ```
 
-Save the returned `token` value — this is the enrollment token for agents.
-
-### 1.6 Install qf-agent via deb/rpm
+### 3.3 Deploy
 
 ```bash
-# On the managed host — Debian/Ubuntu
-sudo dpkg -i qf-agent_1.0.0_amd64.deb
+# Install pip dependencies (once)
+pip install ansible
 
-# Or RPM-based (RHEL/Fedora/Rocky)
-sudo rpm -i qf-agent-1.0.0-1.x86_64.rpm
+# Deploy to all hosts in qf_agents group
+make deploy-agent
+# or directly:
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/deploy-agent.yml
+
+# Deploy to a single host
+make deploy-agent target=web1
+# or:
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/deploy-agent.yml --limit web1
 ```
 
-Configure the agent:
+The role:
+1. Checks kernel version ≥ 5.15, aborts if too old
+2. Downloads `.deb` or `.rpm` from GitHub Releases (version auto-detected from `version/version.go`)
+3. Installs with `apt` or `dnf` (preserves existing config with `confold`)
+4. Starts and enables `qf-agent.service`
+5. Verifies service is active
+
+### 3.4 Override package version
+
+```bash
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/deploy-agent.yml \
+  -e qf_agent_version=0.8.12
+```
+
+---
+
+## 4. Agent: Manual Install on Linux
+
+Works on any Linux x86_64 host — bare metal, VM, or Kubernetes node. Kernel ≥ 5.15 required.
+
+### 4.1 Install package
+
+```bash
+VERSION=0.8.12
+
+# Debian / Ubuntu
+curl -LO https://github.com/qzmi4meister/qf/releases/download/v${VERSION}/qf-agent_${VERSION}_amd64.deb
+sudo dpkg -i qf-agent_${VERSION}_amd64.deb
+
+# RHEL / Fedora / Rocky
+curl -LO https://github.com/qzmi4meister/qf/releases/download/v${VERSION}/qf-agent-${VERSION}.x86_64.rpm
+sudo rpm -i qf-agent-${VERSION}.x86_64.rpm
+```
+
+The package installs:
+- `/usr/local/bin/qf-agent` — binary
+- `/etc/qf/agent.conf` — config template
+- `/etc/systemd/system/qf-agent.service` — systemd unit
+
+### 4.2 Configure
 
 ```bash
 sudo nano /etc/qf/agent.conf
 ```
 
 ```ini
-QF_CP_ENDPOINT=cp.example.com:8444
+# gRPC stream endpoint (post-enrollment)
+QF_CP_ENDPOINT=qf.example.com:8443
+
+# Enrollment endpoint (used only on first start)
+QF_ENROLL_ENDPOINT=qf.example.com:8444
+
+# Bootstrap token — get from CP UI (Tokens page) or API
+# Removed automatically after successful enrollment
+QF_ENROLL_TOKEN=tok_xxxxxxxxxxxx
+
+# Network interface to attach eBPF program
 QF_IFACE=eth0
+
+# PKI directory — stores agent.crt, agent.key, ca.crt after enrollment
 QF_PKI_DIR=/etc/qf
+
 QF_LOG_LEVEL=info
 ```
 
-### 1.7 Enroll the agent
-
-The agent enrolls automatically on first start using the enrollment token:
+To find the correct interface name:
 
 ```bash
-# Set token for first run (written to PKI dir after enrollment)
-echo "QF_ENROLL_TOKEN=<token-from-step-1.5>" | sudo tee -a /etc/qf/agent.conf
+ip route get 8.8.8.8 | awk '{print $5; exit}'
+```
 
-sudo systemctl start qf-agent
+### 4.3 Start agent
+
+```bash
+sudo systemctl enable --now qf-agent
 sudo systemctl status qf-agent
 ```
 
-After successful enrollment, `QF_ENROLL_TOKEN` is no longer needed — the agent uses mTLS certificates stored in `QF_PKI_DIR`.
+On first start the agent:
+1. Connects to `QF_ENROLL_ENDPOINT` and presents the bootstrap token
+2. Sends a CSR; CP signs it and returns mTLS certificates
+3. Stores certs in `QF_PKI_DIR` — subsequent starts skip enrollment
+4. Connects to `QF_CP_ENDPOINT` over mTLS and awaits policy bundles
+
+### 4.4 Verify enrollment
 
 ```bash
-# Verify enrollment in CP
-curl -s http://cp.example.com:8080/hosts \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Tenant-ID: <tenant-uuid>" | jq '.[] | {id, name, status}'
+# Agent logs
+journalctl -u qf-agent -f
+
+# On the CP — host should appear with status "active"
+curl -b cookies.txt -H 'X-Tenant-ID: <tenant-id>' \
+  https://qf.example.com/hosts | jq '.[] | {hostname, status}'
 ```
 
-The host status changes from `enrolling` → `active` once the first policy bundle is received.
-
----
-
-## Scenario 2: k8s node — agent on node, CP in Kubernetes (Helm)
-
-Run qf-cp in your cluster via Helm; install qf-agent as a systemd unit on each Kubernetes node.
-
-### 2.1 Deploy qf-cp via Helm
+### 4.5 Upgrade agent
 
 ```bash
-# Add image (if using local build)
-# Or pull from GHCR: ghcr.io/qf/qf-cp:<version>
+VERSION=NEW_VERSION
 
-helm install qf-cp deploy/helm/qf-cp/ \
-  --namespace qf \
-  --create-namespace \
-  --set secrets.dbDSN="postgres://qf:changeme@postgres:5432/qf" \
-  --set secrets.masterKey="$(openssl rand -hex 32)" \
-  --set secrets.jwtSecret="$(openssl rand -hex 32)" \
-  --set env.QF_CP_HOST="qf-cp.qf.svc.cluster.local" \
-  --set env.QF_CP_ENDPOINT="qf-cp.qf.svc.cluster.local:8444"
-```
+# Debian / Ubuntu — preserves /etc/qf/agent.conf
+sudo dpkg -i qf-agent_${VERSION}_amd64.deb
 
-Expose the enrollment port (8444) so nodes can reach it:
+# RHEL
+sudo rpm -U qf-agent-${VERSION}.x86_64.rpm
 
-```bash
-# Option A: NodePort (simple)
-helm upgrade qf-cp deploy/helm/qf-cp/ \
-  --set service.type=NodePort \
-  --set service.enrollNodePort=30444
-
-# Option B: LoadBalancer (cloud)
-helm upgrade qf-cp deploy/helm/qf-cp/ --set service.type=LoadBalancer
-```
-
-Wait for pod to be ready:
-
-```bash
-kubectl -n qf rollout status deployment/qf-cp
-```
-
-### 2.2 Install qf-agent on each node
-
-SSH to each Kubernetes node:
-
-```bash
-ssh user@node1.example.com
-
-# Install package
-sudo dpkg -i qf-agent_1.0.0_amd64.deb
-
-# Configure
-sudo tee /etc/qf/agent.conf <<'EOF'
-QF_CP_ENDPOINT=<node-ip>:30444   # NodePort, or LoadBalancer IP:8444
-QF_IFACE=eth0
-QF_PKI_DIR=/etc/qf
-QF_ENROLL_TOKEN=<enrollment-token>
-QF_LOG_LEVEL=info
-EOF
-
-sudo systemctl enable --now qf-agent
-```
-
-### 2.3 Enable Ingress for UI (optional)
-
-```bash
-helm upgrade qf-cp deploy/helm/qf-cp/ \
-  --set ingress.enabled=true \
-  --set ingress.host=qf.example.com \
-  --set ingress.tls=true
-```
-
----
-
-## Scenario 3: All-in-Kubernetes (CP + agent DaemonSet)
-
-> **Note:** qf-agent as a Kubernetes DaemonSet requires privileged pods and host network access. This mode is suitable for cluster-internal network policy enforcement.
-
-### 3.1 Deploy qf-cp
-
-Same as Scenario 2, Step 2.1.
-
-### 3.2 Deploy agent as DaemonSet (stub)
-
-```yaml
-# agent-daemonset.yaml — example stub, adapt for your environment
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: qf-agent
-  namespace: qf
-spec:
-  selector:
-    matchLabels:
-      app: qf-agent
-  template:
-    metadata:
-      labels:
-        app: qf-agent
-    spec:
-      hostNetwork: true
-      hostPID: true
-      tolerations:
-        - operator: Exists
-      containers:
-        - name: qf-agent
-          image: <your-registry>/qf-agent:1.0.0  # build separately (eBPF needs CGO)
-          securityContext:
-            privileged: true
-            capabilities:
-              add: [NET_ADMIN, BPF, SYS_ADMIN]
-          env:
-            - name: QF_CP_ENDPOINT
-              value: "qf-cp.qf.svc.cluster.local:8444"
-            - name: QF_IFACE
-              value: "eth0"
-            - name: QF_ENROLL_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: qf-agent-token
-                  key: token
-          volumeMounts:
-            - name: pki
-              mountPath: /etc/qf
-      volumes:
-        - name: pki
-          hostPath:
-            path: /etc/qf
-            type: DirectoryOrCreate
-```
-
-```bash
-kubectl create secret generic qf-agent-token \
-  --namespace qf \
-  --from-literal=token=<enrollment-token>
-
-kubectl apply -f agent-daemonset.yaml
+sudo systemctl restart qf-agent
 ```
 
 ---
 
 ## Troubleshooting
 
-### Host stuck in `enrolling` status
+### Host stuck in `enrolling`
 
-1. Check agent logs: `journalctl -u qf-agent -n 50`
-2. Verify CP reachable from agent host: `nc -zv <cp-host> 8444`
-3. Check enrollment token not expired: `GET /tokens` via API
-4. Verify `QF_CP_ENDPOINT` matches `QF_CP_HOST` set on CP (TLS SAN mismatch → handshake failure)
+1. `journalctl -u qf-agent -n 50` — look for TLS or connection errors
+2. `nc -zv qf.example.com 8444` — verify enrollment port reachable from the host
+3. Check token is valid and not expired: CP UI → Tokens
+4. Verify `QF_CP_HOST` on CP matches the hostname/IP in `QF_ENROLL_ENDPOINT` — TLS SAN mismatch causes handshake failure
 
-### Bundle not arriving on agent
+### Bundle not arriving
 
-1. Check agent gRPC connection: agent logs should show `"bundle received"` periodically
-2. Check CP logs for errors on gRPC port 8443
-3. Verify mTLS: agent certs in `QF_PKI_DIR` (`agent.crt`, `agent.key`, `ca.crt`) must exist and not be expired
-4. Check host status in UI — if `stale` or `needs_rebootstrap`, re-enroll the agent
+1. Agent logs should show `bundle received` and `bundle applied`
+2. Check mTLS certs exist: `ls -la /etc/qf/` — `agent.crt`, `agent.key`, `ca.crt` must be present
+3. Verify port 8443 reachable: `nc -zv qf.example.com 8443`
+4. Check cert expiry: `openssl x509 -in /etc/qf/agent.crt -noout -dates`
+5. If cert expired: stop agent, delete `/etc/qf/agent.crt` and `/etc/qf/agent.key`, add `QF_ENROLL_TOKEN` back to config, restart
 
-### Events not appearing in UI
-
-1. Confirm agent `status = active` in hosts list
-2. Check agent logs for `"event batch sent"` messages
-3. Verify `QF_GRPC_ADDR` (port 8443) is reachable from agent host
-4. Check CP event ingester logs for PostgreSQL write errors
-
-### TLS handshake errors
-
-- `certificate signed by unknown authority`: agent uses wrong `ca.crt` or CP re-generated CA; re-enroll agent
-- `certificate has expired`: check cert expiry with `openssl x509 -in /etc/qf/agent.crt -noout -dates`; re-enroll to get new cert
-- `connection refused` on port 8444: enrollment server not running; check CP startup logs
-
-### systemd unit fails to start
+### Agent fails to start — BPF errors
 
 ```bash
-journalctl -u qf-agent --no-pager -n 20
+journalctl -u qf-agent -n 20
 ```
 
-- `BPF load failed`: kernel too old (need 5.10+) or missing `CAP_BPF`; check kernel version with `uname -r`
-- `config load failed`: check `/etc/qf/agent.conf` syntax (KEY=VALUE, no spaces around `=`)
+- `BPF load failed: permission denied` — missing capabilities; check the systemd unit has `AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_SYS_ADMIN`
+- `kernel version too old` — need ≥ 5.15; check `uname -r`
+- `interface not found` — `QF_IFACE` does not match actual interface name; check `ip link`
 
-### PostgreSQL connection errors (CP)
+### CP fails to start — database errors
 
-- Verify `QF_DB_DSN` is correct and PostgreSQL is reachable
-- Check if migrations ran: CP logs `"migrations applied"` on startup
-- Verify PostgreSQL user has `CREATE` permissions (needed for first migration)
+- `migrations failed` — PostgreSQL user lacks `CREATE TABLE` permissions; grant: `GRANT ALL ON DATABASE qf TO qf;`
+- `connection refused` — verify `QF_DB_DSN` host/port and that PostgreSQL is running
+- `master key must be 32 bytes` — `QF_MASTER_KEY` must be a 64-character hex string (`openssl rand -hex 32`)
+
+### TLS errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `certificate signed by unknown authority` | Agent has wrong `ca.crt` or CP re-generated CA | Re-enroll agent |
+| `certificate has expired` | Agent cert TTL elapsed (default 365d) | Delete old certs, re-enroll |
+| `x509: certificate is valid for X, not Y` | `QF_CP_HOST` mismatch | Set `QF_CP_HOST` to the hostname agents use |
