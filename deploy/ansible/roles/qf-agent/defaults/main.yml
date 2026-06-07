@@ -1,0 +1,3 @@
+qf_agent_version: "{{ lookup('file', playbook_dir + '/../../version/version.go') | regex_search('Version = \"([^\"]+)\"', '\\1') | first }}"
+qf_agent_deb_url: "https://github.com/qzmi4meister/qf/releases/download/v{{ qf_agent_version }}/qf-agent_{{ qf_agent_version }}_amd64.deb"
+qf_agent_deb_dest: "/tmp/qf-agent_{{ qf_agent_version }}_amd64.deb"
