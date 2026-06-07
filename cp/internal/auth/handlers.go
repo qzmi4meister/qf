@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
@@ -52,6 +54,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
+		h.logAudit("user", "", "auth.login_failed", "user", "")
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -80,6 +83,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = h.q.UpdateUserLastLogin(r.Context(), user.ID)
+	h.logAudit("user", userIDStr, "auth.login", "user", userIDStr)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     accessCookie,
@@ -166,6 +170,9 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	if c := ClaimsFromCtx(r.Context()); c != nil {
+		h.logAudit("user", c.UserID, "auth.logout", "user", c.UserID)
+	}
 	http.SetCookie(w, &http.Cookie{Name: accessCookie, Value: "", MaxAge: -1, Path: "/"})
 	http.SetCookie(w, &http.Cookie{Name: refreshCookie, Value: "", MaxAge: -1, Path: "/auth/refresh"})
 	w.WriteHeader(http.StatusNoContent)
@@ -241,6 +248,24 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) logAudit(actorType, actorID, action, objectType, objectID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var aID, oID pgtype.UUID
+		_ = aID.Scan(actorID)
+		_ = oID.Scan(objectID)
+		_, _ = h.q.InsertAuditLog(ctx, storegen.InsertAuditLogParams{
+			TenantID:   h.tenantID,
+			ActorType:  actorType,
+			ActorID:    aID,
+			Action:     action,
+			ObjectType: objectType,
+			ObjectID:   oID,
+		})
+	}()
 }
 
 func uuidStr(u pgtype.UUID) string {

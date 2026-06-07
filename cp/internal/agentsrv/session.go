@@ -1,9 +1,11 @@
 package agentsrv
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
@@ -74,6 +76,29 @@ func (s *AgentServer) Stream(stream qfv1.AgentService_StreamServer) error {
 		AgentVersion:  &agentVer,
 		KernelVersion: &kernelVer,
 	})
+
+	go func() {
+		actx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = s.queries.InsertAuditLog(actx, storegen.InsertAuditLogParams{
+			TenantID:   tenantUUID,
+			ActorType:  "agent",
+			ObjectType: "host",
+			ObjectID:   hostUUID,
+			Action:     "agent.connected",
+		})
+	}()
+	defer func() {
+		actx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = s.queries.InsertAuditLog(actx, storegen.InsertAuditLogParams{
+			TenantID:   tenantUUID,
+			ActorType:  "agent",
+			ObjectType: "host",
+			ObjectID:   hostUUID,
+			Action:     "agent.disconnected",
+		})
+	}()
 
 	serverGen := int64(host.CurrentGeneration)
 	desiredGen := int64(host.DesiredGeneration)
