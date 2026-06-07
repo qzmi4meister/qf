@@ -113,7 +113,7 @@ release-agent: pkg-agent
 # Requires: ansible (pip install ansible)
 ANSIBLE_INVENTORY ?= .agents-meta/ansible-inventory.yml
 deploy-agent:
-	ansible-playbook -i $(ANSIBLE_INVENTORY) deploy/ansible/deploy-agent.yml \
+	~/venv/ansible-default/bin/ansible-playbook -i $(ANSIBLE_INVENTORY) deploy/ansible/deploy-agent.yml \
 		$(if $(target),--limit $(target),)
 
 clean:
