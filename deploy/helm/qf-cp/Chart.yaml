@@ -2,8 +2,8 @@ apiVersion: v2
 name: qf-cp
 description: qf Control Plane — eBPF firewall management server
 type: application
-version: 0.8.5
-appVersion: "0.8.5"
+version: 0.8.7
+appVersion: "0.8.7"
 keywords:
   - firewall
   - ebpf
