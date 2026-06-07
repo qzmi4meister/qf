@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect, useCallback, type RefObject } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 const PAGE = 100
 
 export function useInfiniteScroll<T>(items: T[]): {
   visible: T[]
-  sentinelRef: RefObject<HTMLDivElement>
+  sentinelRef: React.RefObject<HTMLDivElement | null>
 } {
   const [pageSize, setPageSize] = useState(PAGE)
   const sentinelRef = useRef<HTMLDivElement>(null)
