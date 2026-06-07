@@ -130,7 +130,7 @@ export default function AuditLog() {
               </Table.Tr>
               {expanded.has(l.id) && (
                 <Table.Tr key={`${l.id}-detail`}>
-                  <Table.Td colSpan={5} style={{ background: 'var(--mantine-color-gray-0)' }}>
+                  <Table.Td colSpan={5} style={{ background: 'var(--mantine-color-default-hover)' }}>
                     <Group align="flex-start" gap="md" p="xs">
                       <div style={{ flex: 1 }}>
                         <Text size="xs" fw={600} mb={4}>Before</Text>
