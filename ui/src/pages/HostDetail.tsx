@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useMemo } from 'react'
 import { fmtDateTime, fmtTime } from '../utils/date'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Stack, Title, Tabs, Badge, Group, Text, Table, TextInput, Loader, Center, Anchor,
   Card, Grid, Select as MSelect, Button, Switch, Modal, ActionIcon,
 } from '@mantine/core'
-import { IconSearch, IconDownload, IconEdit, IconPlus, IconX, IconShield } from '@tabler/icons-react'
+import { useState } from 'react'
+import { IconSearch, IconDownload, IconEdit, IconPlus, IconX, IconShield, IconCopy } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMutation } from '@tanstack/react-query'
 import { getHost, listEvents, listFlows, latestCounters, getHostRuleset, patchHost } from '../api/hosts'
@@ -18,8 +19,32 @@ function statusColor(s: string) {
   return s === 'active' ? 'green' : s === 'offline' ? 'gray' : s === 'error' ? 'red' : 'yellow'
 }
 
+function actionColor(a: string) {
+  return a === 'deny' ? 'red' : a === 'allow' ? 'green' : 'blue'
+}
+
+function protoName(p: number): string {
+  const names: Record<number, string> = { 1: 'any', 2: 'TCP', 3: 'UDP', 4: 'ICMP', 5: 'ICMPv6' }
+  return names[p] ?? String(p)
+}
+
+type RuleMap = Map<string, { rule_name: string; policy_name: string }>
+
+function ruleLabel(ruleId: string | undefined, ruleMap: RuleMap): string {
+  if (!ruleId) return '—'
+  const r = ruleMap.get(ruleId)
+  if (r?.rule_name) return r.policy_name ? `${r.rule_name} (${r.policy_name})` : r.rule_name
+  return ruleId.slice(0, 8)
+}
+
 export default function HostDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') ?? 'overview'
+  function setActiveTab(t: string | null) {
+    setSearchParams(t && t !== 'overview' ? { tab: t } : {}, { replace: true })
+  }
+
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState<string | null>(null)
 
@@ -47,22 +72,24 @@ export default function HostDetail() {
     },
     onError: () => notifications.show({ message: 'Save failed', color: 'red' }),
   })
+
+  // Lazy loading: queries enabled only when their tab is active (P7-UI-08)
   const { data: events = [] } = useQuery({
     queryKey: ['events', id],
     queryFn: () => listEvents(id!, { limit: 100 }),
-    enabled: !!id,
-    refetchInterval: 10_000,
+    enabled: !!id && activeTab === 'events',
+    refetchInterval: activeTab === 'events' ? 10_000 : false,
   })
   const { data: flows = [] } = useQuery({
     queryKey: ['flows', id],
     queryFn: () => listFlows(id!, { limit: 100 }),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'flows',
   })
   const { data: counters = [] } = useQuery({
     queryKey: ['counters', id],
     queryFn: () => latestCounters(id!),
-    enabled: !!id,
-    refetchInterval: 30_000,
+    enabled: !!id && activeTab === 'counters',
+    refetchInterval: activeTab === 'counters' ? 30_000 : false,
   })
   const { data: ruleset, isLoading: rulesetLoading } = useQuery({
     queryKey: ['ruleset', id],
@@ -74,6 +101,15 @@ export default function HostDetail() {
     queryFn: listPolicies,
     enabled: !!id,
   })
+
+  // rule_id → {rule_name, policy_name} for Events and Counters tabs (P7-UI-01)
+  const ruleMap: RuleMap = useMemo(() => {
+    const m: RuleMap = new Map()
+    for (const r of ruleset?.rules ?? []) {
+      m.set(r.rule_id, { rule_name: r.rule_name, policy_name: r.policy_name })
+    }
+    return m
+  }, [ruleset])
 
   if (isLoading) return <Center h={200}><Loader /></Center>
   if (!host) return <Text c="red">Host not found</Text>
@@ -102,10 +138,23 @@ export default function HostDetail() {
         <Anchor component={Link} to="/hosts">Hosts</Anchor>
         <Text c="dimmed">/</Text>
         <Title order={2}>{host.hostname}</Title>
+        {/* CopyButton (P7-UI-07) */}
+        <ActionIcon
+          size="sm"
+          variant="subtle"
+          title="Copy hostname"
+          onClick={() => {
+            navigator.clipboard.writeText(host.hostname)
+            notifications.show({ message: 'Hostname copied', color: 'gray', autoClose: 1500 })
+          }}
+        >
+          <IconCopy size={14} />
+        </ActionIcon>
         <Badge color={statusColor(host.status)}>{host.status}</Badge>
       </Group>
 
-      <Tabs defaultValue="overview">
+      {/* URL-synced tabs (P7-UI-04) */}
+      <Tabs value={activeTab} onChange={setActiveTab}>
         <Tabs.List>
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="policies" leftSection={<IconShield size={14} />}>
@@ -247,7 +296,7 @@ export default function HostDetail() {
           <Stack gap="sm">
             <Group>
               <TextInput
-                placeholder="Search IP or rule ID…"
+                placeholder="Search IP or rule…"
                 leftSection={<IconSearch size={14} />}
                 value={search}
                 onChange={(e) => setSearch(e.currentTarget.value)}
@@ -262,7 +311,7 @@ export default function HostDetail() {
                 w={120}
               />
             </Group>
-            <EventsTable events={filteredEvents} />
+            <EventsTable events={filteredEvents} ruleMap={ruleMap} />
           </Stack>
         </Tabs.Panel>
 
@@ -282,7 +331,7 @@ export default function HostDetail() {
             <Table.Tbody>
               {flows.map((f) => (
                 <Table.Tr key={f.id}>
-                  <Table.Td>{f.protocol}</Table.Td>
+                  <Table.Td>{protoName(f.protocol)}</Table.Td>
                   <Table.Td>{f.src_ip ?? '—'}{f.src_port ? `:${f.src_port}` : ''}</Table.Td>
                   <Table.Td>{f.dst_ip ?? '—'}{f.dst_port ? `:${f.dst_port}` : ''}</Table.Td>
                   <Table.Td>{f.bytes_orig}</Table.Td>
@@ -302,7 +351,7 @@ export default function HostDetail() {
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Rule ID</Table.Th>
+                <Table.Th>Rule</Table.Th>
                 <Table.Th>Packets</Table.Th>
                 <Table.Th>Bytes</Table.Th>
                 <Table.Th>Timestamp</Table.Th>
@@ -311,7 +360,8 @@ export default function HostDetail() {
             <Table.Tbody>
               {counters.map((c) => (
                 <Table.Tr key={c.id}>
-                  <Table.Td style={{ fontFamily: 'monospace', fontSize: 12 }}>{c.rule_id.slice(0, 8)}</Table.Td>
+                  {/* rule_name (policy_name) instead of rule_id.slice(0,8) (P7-UI-01) */}
+                  <Table.Td style={{ fontSize: 12 }}>{ruleLabel(c.rule_id, ruleMap)}</Table.Td>
                   <Table.Td>{c.packets}</Table.Td>
                   <Table.Td>{c.bytes}</Table.Td>
                   <Table.Td>{fmtDateTime(c.ts)}</Table.Td>
@@ -375,10 +425,6 @@ function downloadRuleset(hostname: string, rules: RulesetRuleItem[]) {
   URL.revokeObjectURL(url)
 }
 
-function actionColor(a: string) {
-  return a === 'deny' ? 'red' : a === 'allow' ? 'green' : 'blue'
-}
-
 function RulesetTable({ rules }: { rules: RulesetRuleItem[] }) {
   return (
     <Table highlightOnHover style={{ fontSize: 13 }}>
@@ -403,7 +449,7 @@ function RulesetTable({ rules }: { rules: RulesetRuleItem[] }) {
             <Table.Td style={{ fontFamily: 'monospace', fontSize: 12 }} title={r.rule_id}>{r.rule_name || r.rule_id.slice(0, 8)}</Table.Td>
             <Table.Td>{r.policy_name}</Table.Td>
             <Table.Td>{r.direction}</Table.Td>
-            <Table.Td><Badge color={actionColor(r.action)} size="sm">{r.action}</Badge></Table.Td>
+            <Table.Td><Badge color={r.action === 'deny' ? 'red' : r.action === 'allow' ? 'green' : 'blue'} size="sm">{r.action}</Badge></Table.Td>
             <Table.Td>{r.protocol || 'any'}</Table.Td>
             <Table.Td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.src_cidrs?.join(', ') || '—'}</Table.Td>
             <Table.Td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.dst_cidrs?.join(', ') || '—'}</Table.Td>
@@ -419,7 +465,7 @@ function RulesetTable({ rules }: { rules: RulesetRuleItem[] }) {
   )
 }
 
-function EventsTable({ events }: { events: LogEvent[] }) {
+function EventsTable({ events, ruleMap }: { events: LogEvent[]; ruleMap: RuleMap }) {
   return (
     <Table highlightOnHover>
       <Table.Thead>
@@ -430,6 +476,7 @@ function EventsTable({ events }: { events: LogEvent[] }) {
           <Table.Th>Proto</Table.Th>
           <Table.Th>Src</Table.Th>
           <Table.Th>Dst</Table.Th>
+          <Table.Th>Rule</Table.Th>
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -438,13 +485,15 @@ function EventsTable({ events }: { events: LogEvent[] }) {
             <Table.Td style={{ whiteSpace: 'nowrap' }}>{fmtTime(e.created_at)}</Table.Td>
             <Table.Td><Badge color={actionColor(e.action)} size="sm">{e.action}</Badge></Table.Td>
             <Table.Td>{e.direction}</Table.Td>
-            <Table.Td>{e.protocol}</Table.Td>
+            <Table.Td>{protoName(e.protocol)}</Table.Td>
             <Table.Td>{e.src_ip ?? '—'}{e.src_port ? `:${e.src_port}` : ''}</Table.Td>
             <Table.Td>{e.dst_ip ?? '—'}{e.dst_port ? `:${e.dst_port}` : ''}</Table.Td>
+            {/* rule_name (policy_name) instead of rule_id.slice(0,8) (P7-UI-01) */}
+            <Table.Td style={{ fontSize: 12 }}>{ruleLabel(e.rule_id, ruleMap)}</Table.Td>
           </Table.Tr>
         ))}
         {events.length === 0 && (
-          <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" ta="center" size="sm" py="md">No events</Text></Table.Td></Table.Tr>
+          <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" ta="center" size="sm" py="md">No events</Text></Table.Td></Table.Tr>
         )}
       </Table.Tbody>
     </Table>

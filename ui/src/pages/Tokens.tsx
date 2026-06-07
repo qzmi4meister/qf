@@ -8,6 +8,8 @@ import {
 import { IconPlus, IconTrash, IconAlertCircle } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listTokens, createToken, revokeToken } from '../api/misc'
+import { useSortState } from '../hooks/useSortState'
+import { SortTh } from '../components/SortTh'
 
 export default function Tokens() {
   const qc = useQueryClient()
@@ -25,6 +27,12 @@ export default function Tokens() {
   const { data: tokens = [], isLoading } = useQuery({
     queryKey: ['tokens'],
     queryFn: listTokens,
+  })
+  const { sort, toggle, sorted } = useSortState({ key: 'expires_at', dir: 'asc' })
+  const rows = sorted(tokens, (t, k) => {
+    if (k === 'expires_at') return t.expires_at
+    if (k === 'type') return t.type
+    return undefined
   })
 
   const createMut = useMutation({
@@ -69,15 +77,15 @@ export default function Tokens() {
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Type</Table.Th>
+            <SortTh sortKey="type" sort={sort} onSort={toggle}>Type</SortTh>
             <Table.Th>Labels</Table.Th>
             <Table.Th>Uses</Table.Th>
-            <Table.Th>Expires</Table.Th>
+            <SortTh sortKey="expires_at" sort={sort} onSort={toggle}>Expires</SortTh>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {tokens.map((t) => (
+          {rows.map((t) => (
             <Table.Tr key={t.id}>
               <Table.Td><Badge size="sm">{t.type}</Badge></Table.Td>
               <Table.Td>

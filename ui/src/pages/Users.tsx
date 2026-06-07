@@ -10,6 +10,8 @@ import { notifications } from '@mantine/notifications'
 import { listUsers, createUser, patchUser, updateUserRole, deleteUser } from '../api/misc'
 import { useAuth } from '../hooks/useAuth'
 import type { User } from '../types'
+import { useSortState } from '../hooks/useSortState'
+import { SortTh } from '../components/SortTh'
 
 const ROLES = ['admin', 'editor', 'operator', 'auditor']
 
@@ -29,6 +31,13 @@ export default function Users() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: listUsers,
+  })
+  const { sort, toggle, sorted } = useSortState({ key: 'email', dir: 'asc' })
+  const rows = sorted(users, (u, k) => {
+    if (k === 'email') return u.email
+    if (k === 'role') return u.role ?? ''
+    if (k === 'last_login_at') return u.last_login_at ?? ''
+    return undefined
   })
 
   const createMut = useMutation({
@@ -84,16 +93,16 @@ export default function Users() {
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Email</Table.Th>
-            <Table.Th>Role</Table.Th>
+            <SortTh sortKey="email" sort={sort} onSort={toggle}>Email</SortTh>
+            <SortTh sortKey="role" sort={sort} onSort={toggle}>Role</SortTh>
             <Table.Th>Status</Table.Th>
             <Table.Th>Type</Table.Th>
-            <Table.Th>Last login</Table.Th>
+            <SortTh sortKey="last_login_at" sort={sort} onSort={toggle}>Last login</SortTh>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {users.map((u) => (
+          {rows.map((u) => (
             <Table.Tr key={u.id}>
               <Table.Td>{u.email}</Table.Td>
               <Table.Td>

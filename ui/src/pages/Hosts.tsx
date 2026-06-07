@@ -8,8 +8,10 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import {
-  createColumnHelper, getCoreRowModel, getFilteredRowModel, useReactTable, flexRender,
+  createColumnHelper, getCoreRowModel, getFilteredRowModel, getSortedRowModel,
+  useReactTable, flexRender, type SortingState,
 } from '@tanstack/react-table'
+import { useState as useSortingState } from 'react'
 import { IconSearch, IconTrash } from '@tabler/icons-react'
 import { listHosts, deleteHost } from '../api/hosts'
 import type { Host } from '../types'
@@ -30,6 +32,7 @@ export default function Hosts() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Host | null>(null)
+  const [sorting, setSorting] = useSortingState<SortingState>([{ id: 'hostname', desc: false }])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteHost(id),
@@ -109,8 +112,11 @@ export default function Hosts() {
   const table = useReactTable({
     data: filtered,
     columns,
+    state: { sorting },
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   })
 
   if (isLoading) return <Center h={200}><Loader /></Center>
@@ -162,9 +168,26 @@ export default function Hosts() {
         <Table.Thead>
           {table.getHeaderGroups().map((hg) => (
             <Table.Tr key={hg.id}>
-              {hg.headers.map((h) => (
-                <Table.Th key={h.id}>{flexRender(h.column.columnDef.header, h.getContext())}</Table.Th>
-              ))}
+              {hg.headers.map((h) => {
+                const canSort = h.column.getCanSort()
+                const sorted = h.column.getIsSorted()
+                return (
+                  <Table.Th
+                    key={h.id}
+                    onClick={canSort ? h.column.getToggleSortingHandler() : undefined}
+                    style={{ cursor: canSort ? 'pointer' : undefined, userSelect: 'none' }}
+                  >
+                    <Group gap={4} wrap="nowrap">
+                      {flexRender(h.column.columnDef.header, h.getContext())}
+                      {canSort && (
+                        <Text size="xs" c={sorted ? 'blue' : 'dimmed'} style={{ lineHeight: 1 }}>
+                          {sorted === 'asc' ? '↑' : sorted === 'desc' ? '↓' : '↕'}
+                        </Text>
+                      )}
+                    </Group>
+                  </Table.Th>
+                )
+              })}
             </Table.Tr>
           ))}
         </Table.Thead>

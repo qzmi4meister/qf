@@ -9,12 +9,15 @@ import {
 import { IconSearch, IconPlus, IconTrash } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listPolicies, deletePolicy } from '../api/policies'
+import { useSortState } from '../hooks/useSortState'
+import { SortTh } from '../components/SortTh'
 
 export default function Policies() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const { sort, toggle, sorted } = useSortState({ key: 'name', dir: 'asc' })
 
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ['policies'],
@@ -33,6 +36,13 @@ export default function Policies() {
   const filtered = policies.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase())
   )
+
+  const rows = sorted(filtered, (p, k) => {
+    if (k === 'name') return p.name
+    if (k === 'priority') return p.priority
+    if (k === 'updated_at') return p.updated_at
+    return undefined
+  })
 
   if (isLoading) return <Center h={200}><Loader /></Center>
 
@@ -55,15 +65,15 @@ export default function Policies() {
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Name</Table.Th>
-            <Table.Th>Priority</Table.Th>
+            <SortTh sortKey="name" sort={sort} onSort={toggle}>Name</SortTh>
+            <SortTh sortKey="priority" sort={sort} onSort={toggle}>Priority</SortTh>
             <Table.Th>Version</Table.Th>
-            <Table.Th>Updated</Table.Th>
+            <SortTh sortKey="updated_at" sort={sort} onSort={toggle}>Updated</SortTh>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {filtered.map((p) => (
+          {rows.map((p) => (
             <Table.Tr key={p.id}>
               <Table.Td>
                 <Anchor component={Link} to={`/policies/${p.id}`}>{p.name}</Anchor>
@@ -84,7 +94,7 @@ export default function Policies() {
               </Table.Td>
             </Table.Tr>
           ))}
-          {filtered.length === 0 && (
+          {rows.length === 0 && (
             <Table.Tr>
               <Table.Td colSpan={5}>
                 <Text c="dimmed" ta="center" size="sm" py="md">No policies</Text>

@@ -16,6 +16,7 @@ import {
   Button,
   Alert,
   ActionIcon,
+  Badge,
   useMantineColorScheme,
   useComputedColorScheme,
 } from '@mantine/core'
@@ -42,6 +43,7 @@ import { useQuery } from '@tanstack/react-query'
 import { logout } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import client from '../api/client'
+import { listHosts } from '../api/hosts'
 
 const NAV = [
   { label: 'Dashboard', icon: IconLayoutDashboard, to: '/dashboard' },
@@ -104,6 +106,12 @@ export default function Layout() {
     queryFn: () => client.get<{ version: string }>('/version').then(r => r.data),
     staleTime: Infinity,
   })
+  const { data: hosts = [] } = useQuery({
+    queryKey: ['hosts'],
+    queryFn: listHosts,
+    refetchInterval: 30_000,
+  })
+  const offlineCount = hosts.filter(h => h.status !== 'active' && h.status !== 'enrolling').length
   const { setColorScheme } = useMantineColorScheme()
   const computed = useComputedColorScheme('light')
 
@@ -171,19 +179,25 @@ export default function Layout() {
       <AppShell.Navbar p="xs" style={{ display: 'flex', flexDirection: 'column' }}>
         <ScrollArea style={{ flex: 1 }}>
           <Stack gap={2}>
-            {NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                component={RouterNavLink}
-                to={item.to}
-                label={item.label}
-                leftSection={<item.icon size={16} />}
-                style={({ isActive }: { isActive: boolean }) => ({
-                  borderRadius: 'var(--mantine-radius-sm)',
-                  fontWeight: isActive ? 600 : undefined,
-                })}
-              />
-            ))}
+            {NAV.map((item) => {
+              const badge = item.to === '/hosts' && offlineCount > 0
+                ? <Badge size="xs" color="orange" variant="filled" ml="auto">{offlineCount}</Badge>
+                : undefined
+              return (
+                <NavLink
+                  key={item.to}
+                  component={RouterNavLink}
+                  to={item.to}
+                  label={item.label}
+                  leftSection={<item.icon size={16} />}
+                  rightSection={badge}
+                  style={({ isActive }: { isActive: boolean }) => ({
+                    borderRadius: 'var(--mantine-radius-sm)',
+                    fontWeight: isActive ? 600 : undefined,
+                  })}
+                />
+              )
+            })}
           </Stack>
         </ScrollArea>
         {versionData?.version && (

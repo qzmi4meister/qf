@@ -9,6 +9,8 @@ import { IconPlus, IconTrash, IconEdit, IconX } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listObjectGroups, createObjectGroup, updateObjectGroup, deleteObjectGroup } from '../api/objectgroups'
 import type { ObjectGroup } from '../types'
+import { useSortState } from '../hooks/useSortState'
+import { SortTh } from '../components/SortTh'
 
 const GROUP_TYPES = ['ipset', 'portset', 'hostset']
 
@@ -130,6 +132,7 @@ export default function ObjectGroups() {
     queryKey: ['objectgroups'],
     queryFn: listObjectGroups,
   })
+  const { sort, toggle, sorted } = useSortState({ key: 'name', dir: 'asc' })
 
   function buildSpec() {
     if (formType === 'ipset') return { cidrs: formCidrs.filter(Boolean) }
@@ -210,20 +213,23 @@ export default function ObjectGroups() {
         </Tabs.List>
 
         {GROUP_TYPES.map((t) => {
-          const rows = groups.filter((g) => g.type === t)
+          const typeRows = sorted(
+            groups.filter((g) => g.type === t),
+            (g, k) => k === 'name' ? g.name : k === 'updated_at' ? g.updated_at : undefined,
+          )
           return (
             <Tabs.Panel key={t} value={t} pt="md">
               <Table highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Name</Table.Th>
+                    <SortTh sortKey="name" sort={sort} onSort={toggle}>Name</SortTh>
                     <Table.Th>Content</Table.Th>
-                    <Table.Th>Updated</Table.Th>
+                    <SortTh sortKey="updated_at" sort={sort} onSort={toggle}>Updated</SortTh>
                     <Table.Th />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {rows.map((g) => (
+                  {typeRows.map((g) => (
                     <Table.Tr key={g.id}>
                       <Table.Td>{g.name}</Table.Td>
                       <Table.Td><SpecSummary group={g} /></Table.Td>
@@ -240,7 +246,7 @@ export default function ObjectGroups() {
                       </Table.Td>
                     </Table.Tr>
                   ))}
-                  {rows.length === 0 && (
+                  {typeRows.length === 0 && (
                     <Table.Tr>
                       <Table.Td colSpan={4}>
                         <Text c="dimmed" ta="center" size="sm" py="md">No {t} groups</Text>

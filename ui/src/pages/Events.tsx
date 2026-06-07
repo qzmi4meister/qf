@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { fmtTime } from '../utils/date'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -6,9 +6,17 @@ import {
   TextInput,
 } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
-import { listHosts } from '../api/hosts'
-import { listEvents } from '../api/hosts'
+import { listHosts, listEvents, getHostRuleset } from '../api/hosts'
 import type { LogEvent } from '../types'
+
+type RuleMap = Map<string, { rule_name: string; policy_name: string }>
+
+function ruleLabel(ruleId: string | undefined, ruleMap: RuleMap): string {
+  if (!ruleId) return '—'
+  const r = ruleMap.get(ruleId)
+  if (r?.rule_name) return r.policy_name ? `${r.rule_name} (${r.policy_name})` : r.rule_name
+  return ruleId.slice(0, 8)
+}
 
 function actionColor(a: string) {
   return a === 'deny' ? 'red' : a === 'allow' ? 'green' : 'blue'
@@ -39,6 +47,20 @@ export default function Events() {
     queryFn: () => listEvents(hostId!, { limit: 200, action: actionFilter ?? undefined }),
     enabled: !live && !!hostId,
   })
+
+  // Fetch ruleset for rule_name lookup (P7-UI-01)
+  const { data: ruleset } = useQuery({
+    queryKey: ['ruleset', hostId],
+    queryFn: () => getHostRuleset(hostId!),
+    enabled: !!hostId,
+  })
+  const ruleMap: RuleMap = useMemo(() => {
+    const m: RuleMap = new Map()
+    for (const r of ruleset?.rules ?? []) {
+      m.set(r.rule_id, { rule_name: r.rule_name, policy_name: r.policy_name })
+    }
+    return m
+  }, [ruleset])
 
   // SSE subscription
   useEffect(() => {
@@ -180,8 +202,8 @@ export default function Events() {
                   <Table.Td style={{ fontSize: 12 }}>
                     {e.dst_ip ?? '—'}{e.dst_port ? `:${e.dst_port}` : ''}
                   </Table.Td>
-                  <Table.Td style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                    {e.rule_id ? e.rule_id.slice(0, 8) : '—'}
+                  <Table.Td style={{ fontSize: 12 }}>
+                    {ruleLabel(e.rule_id, ruleMap)}
                   </Table.Td>
                 </Table.Tr>
               ))}

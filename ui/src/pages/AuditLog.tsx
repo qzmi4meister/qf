@@ -7,23 +7,30 @@ import {
 } from '@mantine/core'
 import { IconDownload, IconSearch, IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { listAuditLog } from '../api/misc'
+import { useSortState } from '../hooks/useSortState'
+import { SortTh } from '../components/SortTh'
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll'
 
 export default function AuditLog() {
   const [objectTypeFilter, setObjectTypeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const { sort, toggle, sorted } = useSortState({ key: 'created_at', dir: 'desc' })
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['audit-log', { objectTypeFilter }],
     queryFn: () => listAuditLog({ limit: 200, object_type: objectTypeFilter ?? undefined }),
   })
 
-  const filtered = logs.filter((l) => {
-    return !search ||
-      l.actor_id?.includes(search) ||
-      l.object_id?.includes(search) ||
-      l.action.includes(search)
-  })
+  const filtered = sorted(
+    logs.filter((l) => {
+      return !search ||
+        l.actor_id?.includes(search) ||
+        l.object_id?.includes(search) ||
+        l.action.includes(search)
+    }),
+    (l, k) => k === 'created_at' ? l.created_at : k === 'action' ? l.action : undefined,
+  )
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -49,6 +56,7 @@ export default function AuditLog() {
   }
 
   const objectTypes = [...new Set(logs.map((l) => l.object_type))]
+  const { visible, sentinelRef } = useInfiniteScroll(filtered)
 
   if (isLoading) return <Center h={200}><Loader /></Center>
 
@@ -88,14 +96,14 @@ export default function AuditLog() {
         <Table.Thead>
           <Table.Tr>
             <Table.Th w={24} />
-            <Table.Th>Time</Table.Th>
+            <SortTh sortKey="created_at" sort={sort} onSort={toggle}>Time</SortTh>
             <Table.Th>Actor</Table.Th>
-            <Table.Th>Action</Table.Th>
+            <SortTh sortKey="action" sort={sort} onSort={toggle}>Action</SortTh>
             <Table.Th>Object</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {filtered.map((l) => (
+          {visible.map((l) => (
             <>
               <Table.Tr
                 key={l.id}
@@ -151,6 +159,7 @@ export default function AuditLog() {
           )}
         </Table.Tbody>
       </Table>
+      <div ref={sentinelRef} />
     </Stack>
   )
 }
