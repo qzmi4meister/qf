@@ -23,12 +23,13 @@ func NewHandler(q *storegen.Queries, secret []byte, tenantID pgtype.UUID) *Handl
 }
 
 type loginRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
 type meResponse struct {
 	ID       string `json:"id"`
+	Username string `json:"username"`
 	Email    string `json:"email"`
 	Role     string `json:"role"`
 	TenantID string `json:"tenant_id"`
@@ -41,9 +42,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.q.GetUserByEmail(r.Context(), storegen.GetUserByEmailParams{
+	user, err := h.q.GetUserByUsername(r.Context(), storegen.GetUserByUsernameParams{
 		TenantID: h.tenantID,
-		Email:    req.Email,
+		Username: req.Username,
 	})
 	if err != nil || user.Status != "active" {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
@@ -71,7 +72,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	userIDStr := uuidStr(user.ID)
 	tenantIDStr := uuidStr(h.tenantID)
 
-	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Email, ur.Role)
+	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Username, user.Email, ur.Role)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -105,6 +106,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(meResponse{
 		ID:       userIDStr,
+		Username: user.Username,
 		Email:    user.Email,
 		Role:     ur.Role,
 		TenantID: tenantIDStr,
@@ -146,7 +148,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tenantIDStr := uuidStr(h.tenantID)
-	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Email, ur.Role)
+	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Username, user.Email, ur.Role)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -163,6 +165,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(meResponse{
 		ID:       userIDStr,
+		Username: user.Username,
 		Email:    user.Email,
 		Role:     ur.Role,
 		TenantID: tenantIDStr,
@@ -187,6 +190,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(meResponse{
 		ID:       c.UserID,
+		Username: c.Username,
 		Email:    c.Email,
 		Role:     c.Role,
 		TenantID: c.TenantID,

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -148,16 +147,22 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Email   string `json:"email"`
-		Subject string `json:"sub"`
+		Email             string `json:"email"`
+		Subject           string `json:"sub"`
+		PreferredUsername string `json:"preferred_username"`
 	}
 	if err := idToken.Claims(&claims); err != nil || claims.Email == "" {
 		http.Error(w, "missing email claim", http.StatusBadRequest)
 		return
 	}
+	// Fallback: use email local part if preferred_username not provided
+	username := claims.PreferredUsername
+	if username == "" {
+		username = splitEmailLocal(claims.Email)
+	}
 
 	// Lookup or create user
-	user, role, err := h.findOrCreateOIDCUser(r.Context(), claims.Email, claims.Subject)
+	user, role, err := h.findOrCreateOIDCUser(r.Context(), claims.Email, username, claims.Subject)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -166,7 +171,7 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	userIDStr := uuidStr(user.ID)
 	tenantIDStr := uuidStr(h.tenantID)
 
-	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Email, role)
+	access, err := IssueAccessToken(h.secret, userIDStr, tenantIDStr, user.Username, user.Email, role)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -207,7 +212,7 @@ func OIDCEnabled(enabled bool) http.HandlerFunc {
 	}
 }
 
-func (h *OIDCHandler) findOrCreateOIDCUser(ctx context.Context, email, subject string) (storegen.User, string, error) {
+func (h *OIDCHandler) findOrCreateOIDCUser(ctx context.Context, email, username, subject string) (storegen.User, string, error) {
 	user, err := h.q.GetUserByEmail(ctx, storegen.GetUserByEmailParams{
 		TenantID: h.tenantID,
 		Email:    email,
@@ -216,7 +221,6 @@ func (h *OIDCHandler) findOrCreateOIDCUser(ctx context.Context, email, subject s
 		if user.Status != "active" {
 			return storegen.User{}, "", fmt.Errorf("user disabled")
 		}
-		// Update oidc_subject if first OIDC login
 		if user.OidcSubject == nil {
 			if err := h.q.UpdateUserOIDCSubject(ctx, storegen.UpdateUserOIDCSubjectParams{
 				ID:          user.ID,
@@ -230,12 +234,12 @@ func (h *OIDCHandler) findOrCreateOIDCUser(ctx context.Context, email, subject s
 		return user, ur.Role, nil
 	}
 
-	// New user — create with auditor role by default
-	now := time.Now()
-	_ = now
+	// New user — ensure unique username
+	username = uniqueUsername(ctx, h.q, h.tenantID, username)
 	user, err = h.q.CreateUser(ctx, storegen.CreateUserParams{
 		TenantID:     h.tenantID,
 		Email:        email,
+		Username:     username,
 		PasswordHash: nil,
 		OidcSubject:  &subject,
 	})
@@ -248,4 +252,32 @@ func (h *OIDCHandler) findOrCreateOIDCUser(ctx context.Context, email, subject s
 		return storegen.User{}, "", fmt.Errorf("set oidc user role: %w", err)
 	}
 	return user, "auditor", nil
+}
+
+func splitEmailLocal(email string) string {
+	if email == "" {
+		return "user"
+	}
+	for i, c := range email {
+		if c == '@' && i > 0 {
+			return email[:i]
+		}
+	}
+	return email
+}
+
+// uniqueUsername returns username, appending -N if already taken.
+func uniqueUsername(ctx context.Context, q *storegen.Queries, tenantID pgtype.UUID, base string) string {
+	candidate := base
+	for n := 1; n <= 99; n++ {
+		_, err := q.GetUserByUsername(ctx, storegen.GetUserByUsernameParams{
+			TenantID: tenantID,
+			Username: candidate,
+		})
+		if err != nil {
+			return candidate // not found = available
+		}
+		candidate = fmt.Sprintf("%s-%d", base, n)
+	}
+	return candidate
 }

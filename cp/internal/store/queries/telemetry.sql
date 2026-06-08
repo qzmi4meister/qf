@@ -121,14 +121,17 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: ListAuditLog :many
-SELECT id, tenant_id, actor_type, actor_id, action, object_type, object_id, before, after, created_at
-FROM audit_log
-WHERE tenant_id = $1
-  AND ($2 = '' OR actor_type = $2)
-  AND ($3::uuid IS NULL OR actor_id = $3)
-  AND ($4 = '' OR object_type = $4)
-  AND ($5::uuid IS NULL OR object_id = $5)
-  AND ($6::timestamptz IS NULL OR created_at >= $6)
-  AND ($7::timestamptz IS NULL OR created_at < $7)
-ORDER BY created_at DESC
+SELECT al.id, al.tenant_id, al.actor_type, al.actor_id, al.action,
+       al.object_type, al.object_id, al.before, al.after, al.created_at,
+       u.username AS actor_username
+FROM audit_log al
+LEFT JOIN users u ON u.id = al.actor_id
+WHERE al.tenant_id = $1
+  AND ($2 = '' OR al.actor_type = $2)
+  AND ($3::uuid IS NULL OR al.actor_id = $3)
+  AND ($4 = '' OR al.object_type = $4)
+  AND ($5::uuid IS NULL OR al.object_id = $5)
+  AND ($6::timestamptz IS NULL OR al.created_at >= $6)
+  AND ($7::timestamptz IS NULL OR al.created_at < $7)
+ORDER BY al.created_at DESC
 LIMIT $8;

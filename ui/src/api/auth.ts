@@ -1,8 +1,8 @@
 import client from './client'
 import type { Me } from '../types'
 
-export async function login(email: string, password: string): Promise<Me> {
-  const { data } = await client.post<Me>('/auth/login', { email, password })
+export async function login(username: string, password: string): Promise<Me> {
+  const { data } = await client.post<Me>('/auth/login', { username, password })
   return data
 }
 

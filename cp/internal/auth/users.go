@@ -13,6 +13,7 @@ import (
 
 type userResponse struct {
 	ID          string     `json:"id"`
+	Username    string     `json:"username"`
 	Email       string     `json:"email"`
 	Status      string     `json:"status"`
 	Role        string     `json:"role,omitempty"`
@@ -24,6 +25,7 @@ type userResponse struct {
 func userToResponse(u storegen.User, role string) userResponse {
 	r := userResponse{
 		ID:        uuidStr(u.ID),
+		Username:  u.Username,
 		Email:     u.Email,
 		Status:    u.Status,
 		Role:      role,
@@ -86,6 +88,7 @@ func (h *usersHandler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 type createUserRequest struct {
+	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Role     string `json:"role"`
@@ -93,7 +96,7 @@ type createUserRequest struct {
 
 func (h *usersHandler) create(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Email == "" || req.Password == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -110,6 +113,7 @@ func (h *usersHandler) create(w http.ResponseWriter, r *http.Request) {
 	u, err := h.q.CreateUser(r.Context(), storegen.CreateUserParams{
 		TenantID:     h.tenantID,
 		Email:        req.Email,
+		Username:     req.Username,
 		PasswordHash: &hashStr,
 		OidcSubject:  nil,
 	})

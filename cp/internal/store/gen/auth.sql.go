@@ -54,14 +54,15 @@ func (q *Queries) CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) 
 
 const createUser = `-- name: CreateUser :one
 
-INSERT INTO users (tenant_id, email, password_hash, oidc_subject, status)
-VALUES ($1, $2, $3, $4, 'active')
-RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at
+INSERT INTO users (tenant_id, email, username, password_hash, oidc_subject, status)
+VALUES ($1, $2, $3, $4, $5, 'active')
+RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
 `
 
 type CreateUserParams struct {
 	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 	Email        string      `db:"email" json:"email"`
+	Username     string      `db:"username" json:"username"`
 	PasswordHash *string     `db:"password_hash" json:"password_hash"`
 	OidcSubject  *string     `db:"oidc_subject" json:"oidc_subject"`
 }
@@ -71,6 +72,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	row := q.db.QueryRow(ctx, createUser,
 		arg.TenantID,
 		arg.Email,
+		arg.Username,
 		arg.PasswordHash,
 		arg.OidcSubject,
 	)
@@ -84,6 +86,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Status,
 		&i.LastLoginAt,
 		&i.CreatedAt,
+		&i.Username,
 	)
 	return i, err
 }
@@ -178,7 +181,7 @@ func (q *Queries) GetAPITokenByHash(ctx context.Context, tokenHash string) (ApiT
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at FROM users WHERE id = $1 AND tenant_id = $2
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE id = $1 AND tenant_id = $2
 `
 
 type GetUserParams struct {
@@ -198,12 +201,13 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 		&i.Status,
 		&i.LastLoginAt,
 		&i.CreatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at FROM users WHERE tenant_id = $1 AND email = $2
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 AND email = $2
 `
 
 type GetUserByEmailParams struct {
@@ -223,6 +227,33 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 		&i.Status,
 		&i.LastLoginAt,
 		&i.CreatedAt,
+		&i.Username,
+	)
+	return i, err
+}
+
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 AND username = $2
+`
+
+type GetUserByUsernameParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Username string      `db:"username" json:"username"`
+}
+
+func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernameParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsername, arg.TenantID, arg.Username)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.OidcSubject,
+		&i.Status,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.Username,
 	)
 	return i, err
 }
@@ -280,7 +311,7 @@ func (q *Queries) ListAPITokens(ctx context.Context, tenantID pgtype.UUID) ([]Ap
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUsers(ctx context.Context, tenantID pgtype.UUID) ([]User, error) {
@@ -301,6 +332,7 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID pgtype.UUID) ([]User, 
 			&i.Status,
 			&i.LastLoginAt,
 			&i.CreatedAt,
+			&i.Username,
 		); err != nil {
 			return nil, err
 		}
@@ -346,7 +378,7 @@ func (q *Queries) UpdateUserOIDCSubject(ctx context.Context, arg UpdateUserOIDCS
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :one
-UPDATE users SET password_hash = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at
+UPDATE users SET password_hash = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
 `
 
 type UpdateUserPasswordParams struct {
@@ -367,12 +399,13 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 		&i.Status,
 		&i.LastLoginAt,
 		&i.CreatedAt,
+		&i.Username,
 	)
 	return i, err
 }
 
 const updateUserStatus = `-- name: UpdateUserStatus :one
-UPDATE users SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at
+UPDATE users SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
 `
 
 type UpdateUserStatusParams struct {
@@ -393,6 +426,7 @@ func (q *Queries) UpdateUserStatus(ctx context.Context, arg UpdateUserStatusPara
 		&i.Status,
 		&i.LastLoginAt,
 		&i.CreatedAt,
+		&i.Username,
 	)
 	return i, err
 }

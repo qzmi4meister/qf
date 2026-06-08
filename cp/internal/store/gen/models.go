@@ -218,6 +218,7 @@ type User struct {
 	Status       string             `db:"status" json:"status"`
 	LastLoginAt  pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	Username     string             `db:"username" json:"username"`
 }
 
 type UserRole struct {

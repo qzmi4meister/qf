@@ -54,7 +54,7 @@ export async function listUsers(): Promise<User[]> {
   return data
 }
 
-export async function createUser(body: { email: string; password: string; role: string }): Promise<User> {
+export async function createUser(body: { username: string; email: string; password: string; role: string }): Promise<User> {
   const { data } = await client.post<User>('/users', body)
   return data
 }

@@ -1,8 +1,8 @@
 -- ── Users ─────────────────────────────────────────────────────────────────
 
 -- name: CreateUser :one
-INSERT INTO users (tenant_id, email, password_hash, oidc_subject, status)
-VALUES ($1, $2, $3, $4, 'active')
+INSERT INTO users (tenant_id, email, username, password_hash, oidc_subject, status)
+VALUES ($1, $2, $3, $4, $5, 'active')
 RETURNING *;
 
 -- name: GetUser :one
@@ -10,6 +10,9 @@ SELECT * FROM users WHERE id = $1 AND tenant_id = $2;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE tenant_id = $1 AND email = $2;
+
+-- name: GetUserByUsername :one
+SELECT * FROM users WHERE tenant_id = $1 AND username = $2;
 
 -- name: ListUsers :many
 SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC;
