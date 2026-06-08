@@ -1,12 +1,10 @@
 export default function Mark({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-      {/* packet traffic lines */}
-      <path d="M3 7H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M3 12H12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M3 17H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      {/* eBPF hook intercepting at kernel layer */}
-      <path d="M12 8.5V16Q12 20.5 16.5 20.5H21" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none"
+      stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="4" width="24" height="24" rx="5.5" />
+      <path d="M10 11 H17 a4.5 4.5 0 0 1 4.5 4.5 V22" />
+      <rect x="14.5" y="9" width="5" height="5" rx="1.2" fill="currentColor" stroke="none" />
     </svg>
   )
 }

@@ -29,6 +29,23 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `components/PageHead.tsx`: title (19px 700) + mono sub + actions slot
 - `components/QFTable.tsx`: TH (11px uppercase 0.05em) + TD (40px, mono variant) + QFTable wrapper
 
+### Added (P8c)
+- Hosts: QFCard+QFTable+SortTH+StatusBadge+Chip+SkeletonRow+EmptyState; tone toggle-filters
+- HostDetail: QFCard overview grid, Chip label-pills, StatusBadge glow, custom breadcrumb header
+- Policies: QFCard+QFTable+SortTH+SkeletonRow+EmptyState+brand "New policy" button
+- PolicyDetail Inspector: 320px flex side panel (not modal), indigo left-spine on selected rule row
+- PolicyDetail Rule Table: TH/TD, QFBadge action (ok=allow, bad=deny, info=log), mono prio+port
+
+### Added (P8d)
+- Login: split-layout (46% kernel-grid aside + right form pane), responsive (aside hides < 768px)
+- Mark.tsx: updated to canonical design-handoff SVG (rounded rect + eBPF hook + filled packet rect)
+- Dashboard: 5 KPI cards (Kpi component, 30px mono, tone coloring, breakdown mini-bar), SVG Donut 148px (segments by tone), Sparkline bar chart (34px), fleet status breakdown bars, recent activity table
+- AuditLog: PageHead+QFCard+QFTable+SortTH+QFBadge; actor avatar; modal for before/after diff
+- Events: PageHead+QFCard+QFTable+FilterPills+QFBadge; keeps SSE live-stream logic
+- Flows: PageHead+QFCard+QFTable+FilterPills+EmptyState; keeps host selector
+- Tokens: PageHead+QFCard+QFTable+SortTH+QFBadge+EmptyState; keeps all modals
+- Users: PageHead+QFCard+QFTable+SortTH+QFBadge+EmptyState+UserAvatar; keeps all modals
+
 ## [0.8.2] — 2026-06-03
 
 ### Added

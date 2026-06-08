@@ -2,18 +2,39 @@ import { useState } from 'react'
 import { fmtDateTime } from '../utils/date'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Stack, Title, Button, Table, Text, Group, Badge, ActionIcon, Modal,
-  TextInput, PasswordInput, Select, Loader, Center,
+  Modal, Button, Text, Group, Stack, Select, TextInput, PasswordInput, ActionIcon,
 } from '@mantine/core'
-import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react'
+import { IconPlus, IconEdit, IconTrash, IconUsers } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listUsers, createUser, patchUser, updateUserRole, deleteUser } from '../api/misc'
 import { useAuth } from '../hooks/useAuth'
 import type { User } from '../types'
 import { useSortState } from '../hooks/useSortState'
-import { SortTh } from '../components/SortTh'
+import PageHead from '../components/PageHead'
+import QFCard from '../components/QFCard'
+import QFBadge from '../components/QFBadge'
+import EmptyState from '../components/EmptyState'
+import { QFTable, TH, TD, SortTH } from '../components/QFTable'
+import { SkeletonRow } from '../components/Skeleton'
+import type { Tone } from '../components/QFBadge'
 
 const ROLES = ['admin', 'editor', 'operator', 'auditor']
+const ROLE_TONE: Record<string, Tone> = { admin: 'pol', editor: 'info', operator: 'warn', auditor: 'neutral' }
+
+function UserAvatar({ user, size = 30 }: { user: User; size?: number }) {
+  const pending = user.status === 'pending'
+  const isOidc = user.is_oidc
+  const initials = user.email.split('@')[0].split(/[.\-_]/).map(s => s[0]).join('').toUpperCase().slice(0, 2)
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: '50%', flexShrink: 0,
+      background: pending ? 'var(--qf-bg-muted)' : 'var(--qf-indigo-600)',
+      color: pending ? 'var(--qf-fg-mute)' : '#fff',
+      display: 'grid', placeItems: 'center',
+      fontSize: size > 24 ? 11 : 9, fontWeight: 700,
+    }}>{initials || '?'}</span>
+  )
+}
 
 export default function Users() {
   const { user: me } = useAuth()
@@ -28,7 +49,7 @@ export default function Users() {
   const [editRole, setEditRole] = useState('')
   const [editPassword, setEditPassword] = useState('')
 
-  const { data: users = [], isLoading } = useQuery({
+  const { data: users = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: listUsers,
   })
@@ -76,86 +97,97 @@ export default function Users() {
     return <Text c="red">Admin access required</Text>
   }
 
-  if (isLoading) return <Center h={200}><Loader /></Center>
-
   return (
-    <Stack gap="md">
-      <Group justify="space-between">
-        <Title order={2}>Users & Roles</Title>
-        <Button leftSection={<IconPlus size={14} />} onClick={() => {
-          setFormEmail(''); setFormPassword(''); setFormRole('auditor')
-          setCreateOpen(true)
-        }}>
-          New user
-        </Button>
-      </Group>
+    <>
+      <PageHead
+        title="Users"
+        sub={!isLoading ? `${users.length} total` : undefined}
+        actions={
+          <button
+            onClick={() => { setFormEmail(''); setFormPassword(''); setFormRole('auditor'); setCreateOpen(true) }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none' }}
+          >
+            <IconPlus size={14} /> Invite user
+          </button>
+        }
+      />
 
-      <Table highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <SortTh sortKey="email" sort={sort} onSort={toggle}>Email</SortTh>
-            <SortTh sortKey="role" sort={sort} onSort={toggle}>Role</SortTh>
-            <Table.Th>Status</Table.Th>
-            <Table.Th>Type</Table.Th>
-            <SortTh sortKey="last_login_at" sort={sort} onSort={toggle}>Last login</SortTh>
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.map((u) => (
-            <Table.Tr key={u.id}>
-              <Table.Td>{u.email}</Table.Td>
-              <Table.Td>
-                <Badge size="sm" color={u.role === 'admin' ? 'red' : u.role === 'editor' ? 'blue' : 'gray'}>
-                  {u.role ?? '—'}
-                </Badge>
-              </Table.Td>
-              <Table.Td>
-                <Badge size="sm" color={u.status === 'active' ? 'green' : 'gray'}>{u.status}</Badge>
-              </Table.Td>
-              <Table.Td>
-                {u.is_oidc ? <Badge size="xs" variant="outline">OIDC</Badge> : <Text size="sm">Local</Text>}
-              </Table.Td>
-              <Table.Td>
-                <Text size="sm">{fmtDateTime(u.last_login_at)}</Text>
-              </Table.Td>
-              <Table.Td>
-                <Group gap={4}>
-                  <ActionIcon
-                    size="sm"
-                    variant="subtle"
-                    onClick={() => {
-                      setEditUser(u)
-                      setEditRole(u.role ?? 'auditor')
-                      setEditPassword('')
-                    }}
-                  >
-                    <IconEdit size={12} />
-                  </ActionIcon>
-                  {u.id !== me?.id && (
-                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => setDeleteId(u.id)}>
-                      <IconTrash size={12} />
-                    </ActionIcon>
-                  )}
-                </Group>
-              </Table.Td>
-            </Table.Tr>
-          ))}
-          {users.length === 0 && (
-            <Table.Tr>
-              <Table.Td colSpan={6}>
-                <Text c="dimmed" ta="center" size="sm" py="md">No users</Text>
-              </Table.Td>
-            </Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+      <QFCard pad={false}>
+        <QFTable minWidth={700}>
+          <thead>
+            <tr style={{ height: 38 }}>
+              <SortTH sortKey="email" sort={sort} onSort={toggle}>User</SortTH>
+              <SortTH sortKey="role" sort={sort} onSort={toggle} w={120}>Role</SortTH>
+              <TH w={100}>Auth</TH>
+              <SortTH sortKey="last_login_at" sort={sort} onSort={toggle} w={140}>Last login</SortTH>
+              <TH w={60} />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading
+              ? Array(5).fill(0).map((_, i) => <SkeletonRow key={i} cols={5} />)
+              : isError
+              ? (
+                <tr><td colSpan={5}>
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--qf-bad-fg)', fontSize: 'var(--qf-t-sm)', fontFamily: 'var(--qf-mono)' }}>
+                    Failed to load users.{' '}
+                    <button onClick={() => refetch()} style={{ background: 'none', border: 'none', color: 'var(--qf-brand)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>Retry</button>
+                  </div>
+                </td></tr>
+              )
+              : rows.length === 0
+              ? (
+                <tr><td colSpan={5}>
+                  <EmptyState
+                    icon={<IconUsers size={48} />}
+                    title="Just you so far"
+                    body="Invite teammates and assign roles — Admins manage everything, Editors author policies, Viewers have read-only access."
+                    action={
+                      <button onClick={() => { setFormEmail(''); setFormPassword(''); setFormRole('auditor'); setCreateOpen(true) }} style={{ padding: '8px 16px', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--qf-t-base)', fontWeight: 600 }}>
+                        Invite user
+                      </button>
+                    }
+                  />
+                </td></tr>
+              )
+              : rows.map(u => (
+                <tr key={u.id} className="qf-row" style={{ borderTop: '1px solid var(--qf-border-2)' }}>
+                  <td style={{ padding: '0 12px', height: 44 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                      <UserAvatar user={u} />
+                      <div>
+                        <div style={{ fontSize: 'var(--qf-t-md)', fontWeight: 600, color: 'var(--qf-fg-1)' }}>{u.email.split('@')[0]}</div>
+                        <div style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>{u.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <TD><QFBadge tone={ROLE_TONE[u.role ?? ''] ?? 'neutral'}>{u.role ?? '—'}</QFBadge></TD>
+                  <TD><QFBadge tone={u.is_oidc ? 'info' : 'neutral'}>{u.is_oidc ? 'SSO' : 'Local'}</QFBadge></TD>
+                  <TD mono muted>{fmtDateTime(u.last_login_at)}</TD>
+                  <td style={{ padding: '0 12px', height: 44, textAlign: 'right' }}>
+                    <Group gap={4} justify="flex-end">
+                      <ActionIcon size="sm" variant="subtle" onClick={() => { setEditUser(u); setEditRole(u.role ?? 'auditor'); setEditPassword('') }}>
+                        <IconEdit size={12} />
+                      </ActionIcon>
+                      {u.id !== me?.id && (
+                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => setDeleteId(u.id)}>
+                          <IconTrash size={12} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </QFTable>
+      </QFCard>
 
-      <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Create user">
+      <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Invite user">
         <Stack gap="sm">
-          <TextInput label="Email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.currentTarget.value)} required />
-          <PasswordInput label="Password" value={formPassword} onChange={(e) => setFormPassword(e.currentTarget.value)} required />
-          <Select label="Role" data={ROLES} value={formRole} onChange={(v) => setFormRole(v ?? 'auditor')} />
+          <TextInput label="Email" type="email" value={formEmail} onChange={e => setFormEmail(e.currentTarget.value)} required />
+          <PasswordInput label="Password" value={formPassword} onChange={e => setFormPassword(e.currentTarget.value)} required />
+          <Select label="Role" data={ROLES} value={formRole} onChange={v => setFormRole(v ?? 'auditor')} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button loading={createMut.isPending} onClick={() => createMut.mutate()}>Create</Button>
@@ -166,8 +198,8 @@ export default function Users() {
       <Modal opened={!!editUser} onClose={() => setEditUser(null)} title="Edit user">
         <Stack gap="sm">
           <Text size="sm" c="dimmed">{editUser?.email}</Text>
-          <Select label="Role" data={ROLES} value={editRole} onChange={(v) => setEditRole(v ?? 'auditor')} />
-          <PasswordInput label="New password (optional)" value={editPassword} onChange={(e) => setEditPassword(e.currentTarget.value)} />
+          <Select label="Role" data={ROLES} value={editRole} onChange={v => setEditRole(v ?? 'auditor')} />
+          <PasswordInput label="New password (optional)" value={editPassword} onChange={e => setEditPassword(e.currentTarget.value)} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setEditUser(null)}>Cancel</Button>
             <Button loading={editMut.isPending} onClick={() => editMut.mutate()}>Save</Button>
@@ -180,12 +212,10 @@ export default function Users() {
           <Text>Delete this user?</Text>
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button color="red" loading={deleteMut.isPending} onClick={() => deleteId && deleteMut.mutate(deleteId)}>
-              Delete
-            </Button>
+            <Button color="red" loading={deleteMut.isPending} onClick={() => deleteId && deleteMut.mutate(deleteId)}>Delete</Button>
           </Group>
         </Stack>
       </Modal>
-    </Stack>
+    </>
   )
 }

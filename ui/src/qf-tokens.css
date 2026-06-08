@@ -198,3 +198,9 @@
   background-size: 200% 100%;
   animation: qf-skeleton 1.6s ease-in-out infinite;
 }
+
+/* ---- Login aside responsive ----------------------------------------------- */
+.qf-login-aside { display: contents; }
+@media (max-width: 767px) {
+  .qf-login-aside { display: none; }
+}
