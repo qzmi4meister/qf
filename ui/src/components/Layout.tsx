@@ -1,6 +1,6 @@
 import { Outlet, NavLink as RouterNavLink, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   AppShell,
   Burger,
@@ -38,6 +38,7 @@ import { logout } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import client from '../api/client'
 import { listHosts } from '../api/hosts'
+import { listPolicies } from '../api/policies'
 import Mark from './Mark'
 
 const NAV = [
@@ -143,6 +144,118 @@ function UserMenu({ email, onProfile, onSignOut }: { email: string; onProfile: (
   )
 }
 
+function GlobalSearch() {
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const { data: hosts = [] } = useQuery({ queryKey: ['hosts'], queryFn: listHosts, staleTime: 30_000 })
+  const { data: policies = [] } = useQuery({ queryKey: ['policies'], queryFn: listPolicies, staleTime: 30_000 })
+
+  const q = query.trim().toLowerCase()
+  const matchedHosts = q ? hosts.filter(h => h.hostname.toLowerCase().includes(q)).slice(0, 5) : []
+  const matchedPolicies = q ? policies.filter(p => p.name.toLowerCase().includes(q)).slice(0, 5) : []
+  const hasResults = matchedHosts.length > 0 || matchedPolicies.length > 0
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const go = useCallback((path: string) => {
+    setQuery('')
+    setOpen(false)
+    navigate(path)
+  }, [navigate])
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: 230 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '7px 11px',
+        background: 'var(--qf-bg-input)', border: '1px solid var(--qf-border-input)',
+        borderRadius: 'var(--qf-r-md)', color: 'var(--qf-fg-mute)',
+      }}>
+        <IconSearch size={14} style={{ flexShrink: 0 }} />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => { setQuery(e.currentTarget.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); setOpen(false) } }}
+          placeholder="Search hosts, policies…"
+          style={{
+            flex: 1, border: 'none', outline: 'none',
+            background: 'transparent', color: 'var(--qf-fg-1)',
+            fontSize: 'var(--qf-t-base)', fontFamily: 'inherit',
+          }}
+        />
+      </div>
+
+      {open && hasResults && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: 'var(--qf-bg-raised)', border: '1px solid var(--qf-border-1)',
+          borderRadius: 'var(--qf-r-lg)', boxShadow: 'var(--qf-sh-lg)',
+          zIndex: 100, overflow: 'hidden',
+        }}>
+          {matchedHosts.length > 0 && (
+            <>
+              <div style={{ padding: '6px 12px 4px', fontSize: 'var(--qf-t-xs)', fontWeight: 600, color: 'var(--qf-fg-mute)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Hosts
+              </div>
+              {matchedHosts.map(h => (
+                <button key={h.id} onMouseDown={() => go(`/hosts/${h.id}`)} style={searchItemStyle}>
+                  <IconServer size={14} style={{ color: 'var(--qf-fg-mute)', flexShrink: 0 }} />
+                  <span style={{ fontFamily: 'var(--qf-mono)', fontSize: 'var(--qf-t-base)', color: 'var(--qf-fg-1)' }}>{h.hostname}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {matchedPolicies.length > 0 && (
+            <>
+              <div style={{ padding: '6px 12px 4px', fontSize: 'var(--qf-t-xs)', fontWeight: 600, color: 'var(--qf-fg-mute)', textTransform: 'uppercase', letterSpacing: '0.06em', borderTop: matchedHosts.length > 0 ? '1px solid var(--qf-border-2)' : 'none' }}>
+                Policies
+              </div>
+              {matchedPolicies.map(p => (
+                <button key={p.id} onMouseDown={() => go(`/policies/${p.id}`)} style={searchItemStyle}>
+                  <IconShield size={14} style={{ color: 'var(--qf-fg-mute)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 'var(--qf-t-base)', color: 'var(--qf-fg-1)' }}>{p.name}</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {open && q.length > 0 && !hasResults && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: 'var(--qf-bg-raised)', border: '1px solid var(--qf-border-1)',
+          borderRadius: 'var(--qf-r-lg)', boxShadow: 'var(--qf-sh-lg)',
+          zIndex: 100, padding: '12px 14px',
+          fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)',
+        }}>
+          No results for "{query}"
+        </div>
+      )}
+    </div>
+  )
+}
+
+const searchItemStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 9,
+  width: '100%', textAlign: 'left',
+  padding: '8px 12px', fontSize: 'var(--qf-t-base)',
+  fontFamily: 'inherit', background: 'transparent',
+  border: 'none', cursor: 'pointer', color: 'var(--qf-fg-2)',
+}
+
 const menuItemStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 9,
   width: '100%', textAlign: 'left',
@@ -225,24 +338,7 @@ export default function Layout() {
           {/* Right side */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Search */}
-            <button style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '7px 11px', width: 220,
-              background: 'var(--qf-bg-input)', border: '1px solid var(--qf-border-input)',
-              borderRadius: 'var(--qf-r-md)', color: 'var(--qf-fg-mute)',
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>
-              <IconSearch size={14} />
-              <span style={{ fontSize: 'var(--qf-t-base)', flex: 1, textAlign: 'left' }}>
-                Search hosts, policies…
-              </span>
-              <kbd style={{
-                fontFamily: 'var(--qf-mono)', fontSize: 10,
-                border: '1px solid var(--qf-border-input)',
-                borderRadius: 4, padding: '1px 5px',
-                color: 'var(--qf-fg-faint)',
-              }}>⌘K</kbd>
-            </button>
+            <GlobalSearch />
 
             {/* Theme toggle */}
             <button

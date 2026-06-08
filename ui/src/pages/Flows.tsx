@@ -10,6 +10,11 @@ import EmptyState from '../components/EmptyState'
 import { QFTable, TH, TD } from '../components/QFTable'
 import { SkeletonRow } from '../components/Skeleton'
 
+function protoName(p: number): string {
+  const names: Record<number, string> = { 1: 'any', 2: 'TCP', 3: 'UDP', 4: 'ICMP', 5: 'ICMPv6' }
+  return names[p] ?? String(p)
+}
+
 function FilterPills({ opts, value, onChange }: {
   opts: Array<[string, string, string]>
   value: string | null
@@ -127,7 +132,7 @@ export default function Flows() {
                 )
                 : filtered.map(f => (
                   <tr key={f.id} className="qf-row" style={{ borderTop: '1px solid var(--qf-border-2)' }}>
-                    <TD mono muted>{f.protocol}</TD>
+                    <TD mono muted>{protoName(f.protocol)}</TD>
                     <TD mono>{f.src_ip ?? '—'}{f.src_port ? `:${f.src_port}` : ''}</TD>
                     <TD mono>{f.dst_ip ?? '—'}{f.dst_port ? `:${f.dst_port}` : ''}</TD>
                     <TD mono muted right>{f.bytes_orig}</TD>
