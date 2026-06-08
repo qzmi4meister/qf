@@ -11,6 +11,24 @@ Versioning: [Semantic Versioning](https://semver.org/).
 ### Planning
 - Phase 8 UI design system: 25 задач (P8a-01..P8d-06) — CSS tokens, Mantine theme, Logomark, AppShell, shared components (QFBadge/StatusBadge/Chip/QFCard/EmptyState/ErrorState/Skeleton/PageHead), screen redesigns (Hosts/HostDetail/Policies/PolicyDetail+Inspector/Login split/Dashboard KPIs+Donut+Sparklines)
 
+### Added (P8a)
+- `qf-tokens.css`: design token system (slate + indigo primitives, light/dark semantic vars, nav/row CSS classes)
+- Mantine theme: slate-950 dark ramp, custom indigo ramp, 13px base font, qf radii
+- `components/Mark.tsx`: SVG logomark (eBPF hook motif)
+- AppShell Header: Mark + tenant chip + search placeholder + theme toggle + user menu
+- AppShell Nav: 2px indigo active spine, indigo icon, version footer
+
+### Added (P8b)
+- `components/QFBadge.tsx`: tone-based badge (ok/bad/warn/info/pol/term/neutral) with exported TONE_VARS
+- `components/StatusBadge.tsx`: status dot + label + glow-ring on active
+- `components/Chip.tsx`: key|value mono-pill for host labels
+- `components/QFCard.tsx`: border-defined surface card, no shadow, pad={false} for tables
+- `components/EmptyState.tsx`: icon + title + body + action slot
+- `components/ErrorState.tsx`: bad-fg triangle + body mono + retry button
+- `components/Skeleton.tsx`: shimmer animation + SkeletonRow helper
+- `components/PageHead.tsx`: title (19px 700) + mono sub + actions slot
+- `components/QFTable.tsx`: TH (11px uppercase 0.05em) + TD (40px, mono variant) + QFTable wrapper
+
 ## [0.8.2] — 2026-06-03
 
 ### Added

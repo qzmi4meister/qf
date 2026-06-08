@@ -181,3 +181,20 @@
 .qf-row:hover > td {
   background: var(--qf-bg-row-hover);
 }
+
+/* ======== Skeleton shimmer ================================================== */
+@keyframes qf-skeleton {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.qf-skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    var(--qf-bg-muted) 25%,
+    var(--qf-bg-raised) 50%,
+    var(--qf-bg-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: qf-skeleton 1.6s ease-in-out infinite;
+}
