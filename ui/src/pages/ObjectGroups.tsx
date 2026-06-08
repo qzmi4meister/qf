@@ -5,7 +5,7 @@ import {
   Stack, Title, Tabs, Button, Table, Text, Group, ActionIcon, Modal,
   TextInput, Select, Badge, Loader, Center,
 } from '@mantine/core'
-import { IconPlus, IconTrash, IconEdit, IconX } from '@tabler/icons-react'
+import { IconPlus, IconTrash, IconX } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { listObjectGroups, createObjectGroup, updateObjectGroup, deleteObjectGroup } from '../api/objectgroups'
 import type { ObjectGroup } from '../types'
@@ -231,18 +231,22 @@ export default function ObjectGroups() {
                 <Table.Tbody>
                   {typeRows.map((g) => (
                     <Table.Tr key={g.id}>
-                      <Table.Td>{g.name}</Table.Td>
+                      <Table.Td>
+                        <Text
+                          size="sm"
+                          fw={500}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => openEdit(g)}
+                        >
+                          {g.name}
+                        </Text>
+                      </Table.Td>
                       <Table.Td><SpecSummary group={g} /></Table.Td>
                       <Table.Td>{fmtDateTime(g.updated_at)}</Table.Td>
                       <Table.Td>
-                        <Group gap={4}>
-                          <ActionIcon size="sm" variant="subtle" onClick={() => openEdit(g)}>
-                            <IconEdit size={12} />
-                          </ActionIcon>
-                          <ActionIcon size="sm" variant="subtle" color="red" onClick={() => setDeleteId(g.id)}>
-                            <IconTrash size={12} />
-                          </ActionIcon>
-                        </Group>
+                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => setDeleteId(g.id)}>
+                          <IconTrash size={12} />
+                        </ActionIcon>
                       </Table.Td>
                     </Table.Tr>
                   ))}
