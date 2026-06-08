@@ -53,6 +53,7 @@ type Querier interface {
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
 	GetUser(ctx context.Context, arg GetUserParams) (User, error)
 	GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (User, error)
+	GetUserByUsername(ctx context.Context, arg GetUserByUsernameParams) (User, error)
 	// ── User roles ────────────────────────────────────────────────────────────
 	GetUserRole(ctx context.Context, arg GetUserRoleParams) (UserRole, error)
 	IncrementHostDesiredGeneration(ctx context.Context, arg IncrementHostDesiredGenerationParams) error
@@ -79,7 +80,7 @@ type Querier interface {
 	// =============================================================================
 	InsertSystemEvent(ctx context.Context, arg InsertSystemEventParams) (SystemEvent, error)
 	ListAPITokens(ctx context.Context, tenantID pgtype.UUID) ([]ApiToken, error)
-	ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]AuditLog, error)
+	ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error)
 	ListBootstrapTokens(ctx context.Context, tenantID pgtype.UUID) ([]BootstrapToken, error)
 	ListConfigVersions(ctx context.Context, arg ListConfigVersionsParams) ([]ConfigVersion, error)
 	ListCounterSnapshots(ctx context.Context, arg ListCounterSnapshotsParams) ([]ListCounterSnapshotsRow, error)

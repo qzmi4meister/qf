@@ -213,16 +213,19 @@ func (q *Queries) InsertSystemEvent(ctx context.Context, arg InsertSystemEventPa
 }
 
 const listAuditLog = `-- name: ListAuditLog :many
-SELECT id, tenant_id, actor_type, actor_id, action, object_type, object_id, before, after, created_at
-FROM audit_log
-WHERE tenant_id = $1
-  AND ($2 = '' OR actor_type = $2)
-  AND ($3::uuid IS NULL OR actor_id = $3)
-  AND ($4 = '' OR object_type = $4)
-  AND ($5::uuid IS NULL OR object_id = $5)
-  AND ($6::timestamptz IS NULL OR created_at >= $6)
-  AND ($7::timestamptz IS NULL OR created_at < $7)
-ORDER BY created_at DESC
+SELECT al.id, al.tenant_id, al.actor_type, al.actor_id, al.action,
+       al.object_type, al.object_id, al.before, al.after, al.created_at,
+       u.username AS actor_username
+FROM audit_log al
+LEFT JOIN users u ON u.id = al.actor_id
+WHERE al.tenant_id = $1
+  AND ($2 = '' OR al.actor_type = $2)
+  AND ($3::uuid IS NULL OR al.actor_id = $3)
+  AND ($4 = '' OR al.object_type = $4)
+  AND ($5::uuid IS NULL OR al.object_id = $5)
+  AND ($6::timestamptz IS NULL OR al.created_at >= $6)
+  AND ($7::timestamptz IS NULL OR al.created_at < $7)
+ORDER BY al.created_at DESC
 LIMIT $8
 `
 
@@ -237,7 +240,21 @@ type ListAuditLogParams struct {
 	Limit    int32              `db:"limit" json:"limit"`
 }
 
-func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]AuditLog, error) {
+type ListAuditLogRow struct {
+	ID            pgtype.UUID        `db:"id" json:"id"`
+	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ActorType     string             `db:"actor_type" json:"actor_type"`
+	ActorID       pgtype.UUID        `db:"actor_id" json:"actor_id"`
+	Action        string             `db:"action" json:"action"`
+	ObjectType    string             `db:"object_type" json:"object_type"`
+	ObjectID      pgtype.UUID        `db:"object_id" json:"object_id"`
+	Before        []byte             `db:"before" json:"before"`
+	After         []byte             `db:"after" json:"after"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ActorUsername *string            `db:"actor_username" json:"actor_username"`
+}
+
+func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error) {
 	rows, err := q.db.Query(ctx, listAuditLog,
 		arg.TenantID,
 		arg.Column2,
@@ -252,9 +269,9 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]A
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AuditLog{}
+	items := []ListAuditLogRow{}
 	for rows.Next() {
-		var i AuditLog
+		var i ListAuditLogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TenantID,
@@ -266,6 +283,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]A
 			&i.Before,
 			&i.After,
 			&i.CreatedAt,
+			&i.ActorUsername,
 		); err != nil {
 			return nil, err
 		}

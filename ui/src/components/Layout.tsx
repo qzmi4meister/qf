@@ -92,7 +92,7 @@ function ProfileModal({ opened, onClose }: { opened: boolean; onClose: () => voi
   )
 }
 
-function UserMenu({ email, onProfile, onSignOut }: { email: string; onProfile: () => void; onSignOut: () => void }) {
+function UserMenu({ username, email, onProfile, onSignOut }: { username: string; email: string; onProfile: () => void; onSignOut: () => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -104,8 +104,7 @@ function UserMenu({ email, onProfile, onSignOut }: { email: string; onProfile: (
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const [local] = email.split('@')
-  const initials = local.slice(0, 2).toUpperCase()
+  const initials = (username || email.split('@')[0]).slice(0, 2).toUpperCase()
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -128,7 +127,8 @@ function UserMenu({ email, onProfile, onSignOut }: { email: string; onProfile: (
           padding: 6, zIndex: 50,
         }}>
           <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--qf-border-2)', marginBottom: 4 }}>
-            <div style={{ fontSize: 'var(--qf-t-base)', fontWeight: 600, color: 'var(--qf-fg-1)' }}>{email}</div>
+            <div style={{ fontSize: 'var(--qf-t-base)', fontWeight: 600, color: 'var(--qf-fg-1)', fontFamily: 'var(--qf-mono)' }}>{username}</div>
+            <div style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)' }}>{email}</div>
           </div>
           <button onClick={() => { setOpen(false); onProfile() }} style={menuItemStyle}>
             <IconUser size={15} style={{ color: 'var(--qf-fg-mute)' }} />
@@ -359,6 +359,7 @@ export default function Layout() {
             {/* User menu */}
             {user && (
               <UserMenu
+                username={user.username ?? user.email.split('@')[0]}
                 email={user.email}
                 onProfile={openProfile}
                 onSignOut={handleLogout}

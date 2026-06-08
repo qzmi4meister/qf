@@ -11,18 +11,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// EnsureAdminUser creates the admin user from QF_ADMIN_EMAIL + QF_ADMIN_PASSWORD env vars
-// if no user with that email exists yet. Idempotent.
+// EnsureAdminUser creates the admin user from QF_ADMIN_EMAIL + QF_ADMIN_PASSWORD +
+// QF_ADMIN_USERNAME env vars if no user with that username exists yet. Idempotent.
 func EnsureAdminUser(ctx context.Context, q *storegen.Queries, tenantID pgtype.UUID) error {
 	email := os.Getenv("QF_ADMIN_EMAIL")
 	password := os.Getenv("QF_ADMIN_PASSWORD")
-	if email == "" || password == "" {
+	username := os.Getenv("QF_ADMIN_USERNAME")
+	if email == "" || password == "" || username == "" {
 		return nil
 	}
 
-	_, err := q.GetUserByEmail(ctx, storegen.GetUserByEmailParams{
+	_, err := q.GetUserByUsername(ctx, storegen.GetUserByUsernameParams{
 		TenantID: tenantID,
-		Email:    email,
+		Username: username,
 	})
 	if err == nil {
 		return nil // already exists
@@ -37,6 +38,7 @@ func EnsureAdminUser(ctx context.Context, q *storegen.Queries, tenantID pgtype.U
 	user, err := q.CreateUser(ctx, storegen.CreateUserParams{
 		TenantID:     tenantID,
 		Email:        email,
+		Username:     username,
 		PasswordHash: &hashStr,
 		OidcSubject:  nil,
 	})
@@ -52,6 +54,6 @@ func EnsureAdminUser(ctx context.Context, q *storegen.Queries, tenantID pgtype.U
 		return fmt.Errorf("set admin role: %w", err)
 	}
 
-	slog.Info("admin user created", "email", email)
+	slog.Info("admin user created", "username", username, "email", email)
 	return nil
 }

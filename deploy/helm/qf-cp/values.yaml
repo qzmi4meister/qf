@@ -39,8 +39,9 @@ secrets:
   dbDSN: ""                    # QF_DB_DSN  (required)
   masterKey: ""                # QF_MASTER_KEY — 32-byte hex (required)
   jwtSecret: ""                # QF_JWT_SECRET — ≥32 bytes; ephemeral if empty
-  adminEmail: "admin@localhost"
-  adminPassword: "changeme"
+  adminUsername: "admin"          # QF_ADMIN_USERNAME (required for bootstrap)
+  adminEmail: "admin@localhost"   # QF_ADMIN_EMAIL
+  adminPassword: "changeme"       # QF_ADMIN_PASSWORD
   oidcClientSecret: ""         # QF_OIDC_CLIENT_SECRET
 
 # Non-sensitive env vars injected directly into the Deployment.

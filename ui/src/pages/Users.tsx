@@ -23,7 +23,8 @@ const ROLE_TONE: Record<string, Tone> = { admin: 'pol', editor: 'info', operator
 
 function UserAvatar({ user, size = 30 }: { user: User; size?: number }) {
   const pending = user.status === 'pending'
-  const initials = user.email.split('@')[0].split(/[.\-_]/).map(s => s[0]).join('').toUpperCase().slice(0, 2)
+  const initials = (user.username || user.email.split('@')[0])
+    .split(/[.\-_]/).map(s => s[0]).join('').toUpperCase().slice(0, 2)
   return (
     <span style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -42,6 +43,7 @@ export default function Users() {
   const [editUser, setEditUser] = useState<User | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
+  const [formUsername, setFormUsername] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('auditor')
@@ -52,16 +54,21 @@ export default function Users() {
     queryKey: ['users'],
     queryFn: listUsers,
   })
-  const { sort, toggle, sorted } = useSortState({ key: 'email', dir: 'asc' })
+  const { sort, toggle, sorted } = useSortState({ key: 'username', dir: 'asc' })
   const rows = sorted(users, (u, k) => {
-    if (k === 'email') return u.email
+    if (k === 'username') return u.username
     if (k === 'role') return u.role ?? ''
     if (k === 'last_login_at') return u.last_login_at ?? ''
     return undefined
   })
 
+  function openCreate() {
+    setFormUsername(''); setFormEmail(''); setFormPassword(''); setFormRole('auditor')
+    setCreateOpen(true)
+  }
+
   const createMut = useMutation({
-    mutationFn: () => createUser({ email: formEmail, password: formPassword, role: formRole }),
+    mutationFn: () => createUser({ username: formUsername, email: formEmail, password: formPassword, role: formRole }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
       setCreateOpen(false)
@@ -103,7 +110,7 @@ export default function Users() {
         sub={!isLoading ? `${users.length} total` : undefined}
         actions={
           <button
-            onClick={() => { setFormEmail(''); setFormPassword(''); setFormRole('auditor'); setCreateOpen(true) }}
+            onClick={openCreate}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none' }}
           >
             <IconPlus size={14} /> Invite user
@@ -115,7 +122,7 @@ export default function Users() {
         <QFTable minWidth={700}>
           <thead>
             <tr style={{ height: 38 }}>
-              <SortTH sortKey="email" sort={sort} onSort={toggle}>User</SortTH>
+              <SortTH sortKey="username" sort={sort} onSort={toggle}>User</SortTH>
               <SortTH sortKey="role" sort={sort} onSort={toggle} w={120}>Role</SortTH>
               <TH w={100}>Auth</TH>
               <SortTH sortKey="last_login_at" sort={sort} onSort={toggle} w={140}>Last login</SortTH>
@@ -140,9 +147,9 @@ export default function Users() {
                   <EmptyState
                     icon={<IconUsers size={48} />}
                     title="Just you so far"
-                    body="Invite teammates and assign roles — Admins manage everything, Editors author policies, Viewers have read-only access."
+                    body="Invite teammates and assign roles."
                     action={
-                      <button onClick={() => { setFormEmail(''); setFormPassword(''); setFormRole('auditor'); setCreateOpen(true) }} style={{ padding: '8px 16px', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--qf-t-base)', fontWeight: 600 }}>
+                      <button onClick={openCreate} style={{ padding: '8px 16px', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--qf-t-base)', fontWeight: 600 }}>
                         Invite user
                       </button>
                     }
@@ -155,8 +162,8 @@ export default function Users() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                       <UserAvatar user={u} />
                       <div>
-                        <div style={{ fontSize: 'var(--qf-t-md)', fontWeight: 600, color: 'var(--qf-fg-1)' }}>{u.email.split('@')[0]}</div>
-                        <div style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>{u.email}</div>
+                        <div style={{ fontSize: 'var(--qf-t-md)', fontWeight: 600, color: 'var(--qf-fg-1)', fontFamily: 'var(--qf-mono)' }}>{u.username}</div>
+                        <div style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)' }}>{u.email}</div>
                       </div>
                     </div>
                   </td>
@@ -184,6 +191,14 @@ export default function Users() {
 
       <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Invite user">
         <Stack gap="sm">
+          <TextInput
+            label="Username"
+            value={formUsername}
+            onChange={e => setFormUsername(e.currentTarget.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            required
+          />
           <TextInput label="Email" type="email" value={formEmail} onChange={e => setFormEmail(e.currentTarget.value)} required />
           <PasswordInput label="Password" value={formPassword} onChange={e => setFormPassword(e.currentTarget.value)} required />
           <Select label="Role" data={ROLES} value={formRole} onChange={v => setFormRole(v ?? 'auditor')} />
@@ -196,7 +211,7 @@ export default function Users() {
 
       <Modal opened={!!editUser} onClose={() => setEditUser(null)} title="Edit user">
         <Stack gap="sm">
-          <Text size="sm" c="dimmed">{editUser?.email}</Text>
+          <Text size="sm" c="dimmed" ff="monospace">{editUser?.username}</Text>
           <Select label="Role" data={ROLES} value={editRole} onChange={v => setEditRole(v ?? 'auditor')} />
           <PasswordInput label="New password (optional)" value={editPassword} onChange={e => setEditPassword(e.currentTarget.value)} />
           <Group justify="flex-end">

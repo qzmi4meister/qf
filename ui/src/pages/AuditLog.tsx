@@ -156,7 +156,7 @@ export default function AuditLog() {
                 >
                   <TD mono muted>{fmtDateTime(l.created_at)}</TD>
                   <td style={{ padding: '0 12px', height: 40 }}>
-                    <ActorAvatar actor={l.actor_id ?? l.actor_type} />
+                    <ActorAvatar actor={l.actor_username ?? l.actor_type} />
                   </td>
                   <TD><QFBadge tone={actionTone(l.action)}>{l.action}</QFBadge></TD>
                   <TD mono muted>{l.object_type}{l.object_id ? ` ${l.object_id.slice(0, 8)}` : ''}</TD>

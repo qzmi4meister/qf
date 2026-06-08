@@ -44,16 +44,17 @@ func (h *auditHandler) list(w http.ResponseWriter, r *http.Request) {
 // ── response type ─────────────────────────────────────────────────────────
 
 type AuditLogResponse struct {
-	ID         string          `json:"id"`
-	TenantID   string          `json:"tenant_id"`
-	ActorType  string          `json:"actor_type"`
-	ActorID    string          `json:"actor_id,omitempty"`
-	Action     string          `json:"action"`
-	ObjectType string          `json:"object_type"`
-	ObjectID   string          `json:"object_id,omitempty"`
-	Before     jsonRawOrNull   `json:"before"`
-	After      jsonRawOrNull   `json:"after"`
-	CreatedAt  time.Time       `json:"created_at"`
+	ID            string        `json:"id"`
+	TenantID      string        `json:"tenant_id"`
+	ActorType     string        `json:"actor_type"`
+	ActorID       string        `json:"actor_id,omitempty"`
+	ActorUsername string        `json:"actor_username,omitempty"`
+	Action        string        `json:"action"`
+	ObjectType    string        `json:"object_type"`
+	ObjectID      string        `json:"object_id,omitempty"`
+	Before        jsonRawOrNull `json:"before"`
+	After         jsonRawOrNull `json:"after"`
+	CreatedAt     time.Time     `json:"created_at"`
 }
 
 // jsonRawOrNull serialises a []byte as a raw JSON value (or null).
@@ -66,7 +67,7 @@ func (j jsonRawOrNull) MarshalJSON() ([]byte, error) {
 	return j, nil
 }
 
-func toAuditLogResponses(rows []storegen.AuditLog) []AuditLogResponse {
+func toAuditLogResponses(rows []storegen.ListAuditLogRow) []AuditLogResponse {
 	out := make([]AuditLogResponse, 0, len(rows))
 	for _, row := range rows {
 		a := AuditLogResponse{
@@ -79,6 +80,9 @@ func toAuditLogResponses(rows []storegen.AuditLog) []AuditLogResponse {
 			ObjectID:   uuidToStr(row.ObjectID),
 			Before:     jsonRawOrNull(row.Before),
 			After:      jsonRawOrNull(row.After),
+		}
+		if row.ActorUsername != nil {
+			a.ActorUsername = *row.ActorUsername
 		}
 		if row.CreatedAt.Valid {
 			a.CreatedAt = row.CreatedAt.Time

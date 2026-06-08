@@ -74,7 +74,7 @@ const labelStyle: React.CSSProperties = {
 export default function Login() {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -90,7 +90,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
+      await login(username, password)
       qc.invalidateQueries({ queryKey: ['me'] })
       navigate('/dashboard')
     } catch {
@@ -157,13 +157,16 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <label style={labelStyle}>
-              Email
+              Username
               <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.currentTarget.value)}
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.currentTarget.value)}
                 required
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
                 style={{ ...inputStyle, marginTop: 6, ...(error ? { borderColor: 'var(--qf-bad-fg)' } : {}) }}
               />
             </label>

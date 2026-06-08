@@ -114,6 +114,7 @@ export interface AuditLog {
   tenant_id: string
   actor_type: string
   actor_id?: string
+  actor_username?: string
   action: string
   object_type: string
   object_id?: string
@@ -136,6 +137,7 @@ export interface Token {
 
 export interface User {
   id: string
+  username: string
   email: string
   status: string
   role?: string
@@ -157,6 +159,7 @@ export interface APIToken {
 
 export interface Me {
   id: string
+  username: string
   email: string
   role: string
   tenant_id: string

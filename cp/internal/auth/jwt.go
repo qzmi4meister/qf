@@ -18,15 +18,17 @@ const (
 type Claims struct {
 	UserID   string `json:"uid"`
 	TenantID string `json:"tid"`
-	Email    string `json:"email"`
+	Username string `json:"username"`
+	Email    string `json:"email"` // kept for backward compat with existing tokens
 	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-func IssueAccessToken(secret []byte, userID, tenantID, email, role string) (string, error) {
+func IssueAccessToken(secret []byte, userID, tenantID, username, email, role string) (string, error) {
 	claims := Claims{
 		UserID:   userID,
 		TenantID: tenantID,
+		Username: username,
 		Email:    email,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
