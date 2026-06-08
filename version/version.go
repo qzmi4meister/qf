@@ -1,4 +1,4 @@
 package version
 
 // Version is the current application version.
-const Version = "0.8.12"
+const Version = "0.8.13"
