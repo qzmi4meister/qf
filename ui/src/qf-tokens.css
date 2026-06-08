@@ -1,0 +1,183 @@
+/* qf design tokens — eBPF host firewall control plane
+ * Light mode default, dark via [data-mantine-color-scheme="dark"]
+ * ----------------------------------------------------------------- */
+
+:root {
+  /* ---- brand: refined indigo ------------------------------------------ */
+  --qf-indigo-50:  #eef1ff;
+  --qf-indigo-100: #e0e4ff;
+  --qf-indigo-200: #c5ccff;
+  --qf-indigo-300: #a1abfb;
+  --qf-indigo-400: #7e88f5;
+  --qf-indigo-500: #6366e8;
+  --qf-indigo-600: #5052d6;
+  --qf-indigo-700: #4144b4;
+  --qf-indigo-800: #363891;
+  --qf-indigo-900: #2f3274;
+  --qf-indigo-950: #1a1b45;
+
+  /* ---- neutral: cool slate --------------------------------------------- */
+  --qf-slate-50:  #f5f7fa;
+  --qf-slate-100: #eaeef3;
+  --qf-slate-200: #d4dae3;
+  --qf-slate-300: #aeb8c7;
+  --qf-slate-400: #818da0;
+  --qf-slate-500: #5d6878;
+  --qf-slate-600: #434c5b;
+  --qf-slate-650: #353d4a;
+  --qf-slate-700: #2a313d;
+  --qf-slate-750: #222834;
+  --qf-slate-800: #1a1f29;
+  --qf-slate-850: #141821;
+  --qf-slate-900: #0f131b;
+  --qf-slate-950: #090c12;
+
+  /* ---- status hues -------------------------------------------------------- */
+  --qf-green-400: #34d399; --qf-green-500: #10b981; --qf-green-600: #059669;
+  --qf-red-400:   #f87171; --qf-red-500:   #ef4444; --qf-red-600:   #dc2626;
+  --qf-amber-400: #fbbf24; --qf-amber-500: #f59e0b; --qf-amber-600: #d97706;
+  --qf-blue-400:  #60a5fa; --qf-blue-500:  #3b82f6; --qf-blue-600:  #2563eb;
+  --qf-violet-400:#c084fc; --qf-violet-500:#a855f7; --qf-violet-600:#9333ea;
+  --qf-orange-400:#fb923c; --qf-orange-500:#f97316;
+
+  /* ---- typography --------------------------------------------------------- */
+  --qf-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --qf-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --qf-t-xs:   11px;
+  --qf-t-sm:   12px;
+  --qf-t-base: 13px;
+  --qf-t-md:   14px;
+  --qf-t-lg:   16px;
+  --qf-t-xl:   19px;
+  --qf-t-2xl:  24px;
+  --qf-t-3xl:  30px;
+
+  /* ---- radii -------------------------------------------------------------- */
+  --qf-r-xs:   4px;
+  --qf-r-sm:   6px;
+  --qf-r-md:   8px;
+  --qf-r-lg:   10px;
+  --qf-r-xl:   14px;
+  --qf-r-full: 9999px;
+
+  /* ---- layout ------------------------------------------------------------- */
+  --qf-w-nav:    220px;
+  --qf-h-header: 56px;
+  --qf-row-h:    40px;
+
+  /* ======== LIGHT MODE (default) ========================================= */
+  --qf-sh-sm: 0 1px 2px rgba(15,23,42,0.06);
+  --qf-sh-md: 0 4px 14px -4px rgba(15,23,42,0.1);
+  --qf-sh-lg: 0 18px 48px -14px rgba(15,23,42,0.18);
+
+  --qf-bg-body:      var(--qf-slate-50);
+  --qf-bg-surface:   #ffffff;
+  --qf-bg-raised:    #ffffff;
+  --qf-bg-muted:     var(--qf-slate-100);
+  --qf-bg-inset:     var(--qf-slate-50);
+  --qf-bg-input:     #ffffff;
+  --qf-bg-nav:       #ffffff;
+  --qf-bg-header:    #ffffff;
+  --qf-bg-row-hover: var(--qf-slate-50);
+
+  --qf-fg-1:     var(--qf-slate-800);
+  --qf-fg-2:     var(--qf-slate-700);
+  --qf-fg-3:     var(--qf-slate-600);
+  --qf-fg-mute:  var(--qf-slate-500);
+  --qf-fg-faint: var(--qf-slate-400);
+
+  --qf-border-1:     var(--qf-slate-200);
+  --qf-border-2:     var(--qf-slate-100);
+  --qf-border-input: var(--qf-slate-300);
+
+  --qf-brand:       var(--qf-indigo-600);
+  --qf-brand-solid: var(--qf-indigo-600);
+  --qf-brand-hover: var(--qf-indigo-700);
+
+  --qf-ok-bg:      #dcfce7; --qf-ok-fg:   #15803d; --qf-ok-solid:   var(--qf-green-600);
+  --qf-bad-bg:     #fee2e2; --qf-bad-fg:  #b91c1c; --qf-bad-solid:  var(--qf-red-600);
+  --qf-warn-bg:    #fef3c7; --qf-warn-fg: #b45309; --qf-warn-solid: var(--qf-amber-600);
+  --qf-info-bg:    #dbeafe; --qf-info-fg: #1d4ed8; --qf-info-solid: var(--qf-blue-600);
+  --qf-pol-bg:     #f3e8ff; --qf-pol-fg:  #7e22ce; --qf-pol-solid:  var(--qf-violet-600);
+  --qf-term-bg:    #ffedd5; --qf-term-fg: #c2410c; --qf-term-solid: var(--qf-orange-500);
+  --qf-neutral-bg: var(--qf-slate-100); --qf-neutral-fg: var(--qf-slate-600);
+}
+
+/* ======== DARK MODE ======================================================= */
+[data-mantine-color-scheme="dark"] {
+  --qf-sh-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --qf-sh-md: 0 4px 14px -4px rgba(0,0,0,0.5);
+  --qf-sh-lg: 0 18px 48px -14px rgba(0,0,0,0.7);
+
+  --qf-bg-body:      var(--qf-slate-950);
+  --qf-bg-surface:   var(--qf-slate-900);
+  --qf-bg-raised:    var(--qf-slate-850);
+  --qf-bg-muted:     var(--qf-slate-800);
+  --qf-bg-inset:     var(--qf-slate-850);
+  --qf-bg-input:     var(--qf-slate-850);
+  --qf-bg-nav:       var(--qf-slate-900);
+  --qf-bg-header:    var(--qf-slate-900);
+  --qf-bg-row-hover: rgba(126, 136, 245, 0.06);
+
+  --qf-fg-1:     var(--qf-slate-100);
+  --qf-fg-2:     var(--qf-slate-300);
+  --qf-fg-3:     var(--qf-slate-400);
+  --qf-fg-mute:  var(--qf-slate-500);
+  --qf-fg-faint: var(--qf-slate-600);
+
+  --qf-border-1:     var(--qf-slate-700);
+  --qf-border-2:     var(--qf-slate-750);
+  --qf-border-input: var(--qf-slate-650);
+
+  --qf-brand:       var(--qf-indigo-400);
+  --qf-brand-solid: var(--qf-indigo-500);
+  --qf-brand-hover: var(--qf-indigo-300);
+
+  --qf-ok-bg:      rgba(6,78,59,0.32);   --qf-ok-fg:   var(--qf-green-400);  --qf-ok-solid:   var(--qf-green-500);
+  --qf-bad-bg:     rgba(127,29,29,0.32); --qf-bad-fg:  var(--qf-red-400);    --qf-bad-solid:  var(--qf-red-500);
+  --qf-warn-bg:    rgba(120,53,15,0.34); --qf-warn-fg: var(--qf-amber-400);  --qf-warn-solid: var(--qf-amber-500);
+  --qf-info-bg:    rgba(30,58,138,0.34); --qf-info-fg: var(--qf-blue-400);   --qf-info-solid: var(--qf-blue-500);
+  --qf-pol-bg:     rgba(76,29,149,0.34); --qf-pol-fg:  var(--qf-violet-400); --qf-pol-solid:  var(--qf-violet-500);
+  --qf-term-bg:    rgba(124,45,18,0.34); --qf-term-fg: var(--qf-orange-400); --qf-term-solid: var(--qf-orange-500);
+  --qf-neutral-bg: var(--qf-slate-750);  --qf-neutral-fg: var(--qf-slate-300);
+}
+
+/* ======== Nav link ========================================================= */
+.qf-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  margin-bottom: 1px;
+  border-radius: var(--qf-r-md);
+  text-decoration: none;
+  font-size: var(--qf-t-md);
+  font-weight: 500;
+  color: var(--qf-fg-3);
+  background: transparent;
+  transition: background 0.1s, color 0.1s;
+}
+.qf-nav-link:hover {
+  background: var(--qf-bg-muted);
+  color: var(--qf-fg-2);
+}
+.qf-nav-link[aria-current="page"] {
+  background: var(--qf-bg-muted);
+  color: var(--qf-fg-1);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--qf-brand-solid);
+}
+.qf-nav-link[aria-current="page"] .qf-nav-icon {
+  color: var(--qf-brand);
+}
+.qf-nav-icon {
+  display: flex;
+  color: var(--qf-fg-mute);
+  flex-shrink: 0;
+}
+
+/* ======== Row hover ========================================================= */
+.qf-row:hover > td {
+  background: var(--qf-bg-row-hover);
+}

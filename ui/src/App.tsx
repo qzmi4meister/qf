@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@mantine/core/styles.css'
 import '@mantine/charts/styles.css'
 import '@mantine/notifications/styles.css'
+import './qf-tokens.css'
 
 import RouteGuard from './components/RouteGuard'
 import Layout from './components/Layout'
@@ -26,19 +27,36 @@ import Users from './pages/Users'
 const theme = createTheme({
   colors: {
     dark: [
-      '#cbd5e1', // [0] slate-300  primary text
-      '#94a3b8', // [1] slate-400  dimmed text
-      '#64748b', // [2] slate-500  placeholder
-      '#475569', // [3] slate-600  borders
-      '#334155', // [4] slate-700  subtle borders / hover
-      '#1e293b', // [5] slate-800  input / element bg
-      '#172033', // [6]            card / modal bg
-      '#0f172a', // [7] slate-900  body bg
-      '#0a1020', // [8]            AppShell nav bg
-      '#020617', // [9] slate-950  deepest bg
+      '#eaeef3', // [0] slate-100  primary text
+      '#d4dae3', // [1] slate-200
+      '#aeb8c7', // [2] slate-300
+      '#818da0', // [3] slate-400
+      '#5d6878', // [4] slate-500
+      '#2a313d', // [5] slate-700  inputs / elements
+      '#141821', // [6] slate-850  card / modal bg
+      '#090c12', // [7] slate-950  body bg
+      '#060810', // [8]            deepest
+      '#030508', // [9]
+    ],
+    indigo: [
+      '#eef1ff', // [0]
+      '#e0e4ff', // [1]
+      '#c5ccff', // [2]
+      '#a1abfb', // [3]
+      '#7e88f5', // [4] dark-mode primary
+      '#6366e8', // [5] brand anchor
+      '#5052d6', // [6] light-mode primary
+      '#4144b4', // [7]
+      '#363891', // [8]
+      '#1a1b45', // [9]
     ],
   },
   primaryColor: 'indigo',
+  fontFamily: '"Inter", ui-sans-serif, system-ui, -apple-system, sans-serif',
+  fontFamilyMonospace: 'ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace',
+  fontSizes: { xs: '11px', sm: '12px', md: '13px', lg: '15px', xl: '18px' },
+  radius: { xs: '4px', sm: '6px', md: '8px', lg: '10px', xl: '14px' },
+  defaultRadius: 'md',
 })
 
 const qc = new QueryClient({

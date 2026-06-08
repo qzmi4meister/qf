@@ -8,6 +8,9 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Planning
+- Phase 8 UI design system: 25 задач (P8a-01..P8d-06) — CSS tokens, Mantine theme, Logomark, AppShell, shared components (QFBadge/StatusBadge/Chip/QFCard/EmptyState/ErrorState/Skeleton/PageHead), screen redesigns (Hosts/HostDetail/Policies/PolicyDetail+Inspector/Login split/Dashboard KPIs+Donut+Sparklines)
+
 ## [0.8.2] — 2026-06-03
 
 ### Added
