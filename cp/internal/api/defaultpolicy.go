@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
@@ -33,7 +34,7 @@ type dpHandler struct {
 func registerDefaultPolicy(r chi.Router, q *storegen.Queries, cascade *policy.CascadeRecompiler) {
 	h := &dpHandler{q: q, cascade: cascade}
 	r.Get("/", h.get)
-	r.Put("/", h.put)
+	r.With(auth.RequireRole("admin", "editor")).Put("/", h.put)
 }
 
 func (h *dpHandler) get(w http.ResponseWriter, r *http.Request) {

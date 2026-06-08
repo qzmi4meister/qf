@@ -44,9 +44,10 @@ type tokHandler struct {
 
 func registerTokens(r chi.Router, store *pki.TokenStore) {
 	h := &tokHandler{store: store}
+	radmin := auth.RequireRole("admin")
 	r.Get("/", h.list)
-	r.Post("/", h.create)
-	r.Delete("/{id}", h.delete)
+	r.With(radmin).Post("/", h.create)
+	r.With(radmin).Delete("/{id}", h.delete)
 }
 
 func (h *tokHandler) list(w http.ResponseWriter, r *http.Request) {

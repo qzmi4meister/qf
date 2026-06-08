@@ -92,8 +92,8 @@ type RuleSpec struct {
 // evaluated per-packet (BPF verifier jump-complexity bound). Pass ≤ EvalMaxRules
 // rules to guarantee all are reachable.
 func PushRules(objs *BpfObjects, rules []RuleSpec) error {
-	if len(rules) > MaxRules {
-		return fmt.Errorf("rule count %d exceeds map capacity %d", len(rules), MaxRules)
+	if len(rules) > objs.maxRules {
+		return fmt.Errorf("rule count %d exceeds BPF evaluation limit %d for loaded kernel variant", len(rules), objs.maxRules)
 	}
 
 	sorted := make([]RuleSpec, len(rules))

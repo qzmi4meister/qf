@@ -82,10 +82,29 @@ func KernelVersion() uint32 {
 	if err != nil {
 		return 0
 	}
-	rel := strings.TrimSpace(string(data))
-	var major, minor, patch uint32
-	if _, err := fmt.Sscanf(rel, "%d.%d.%d", &major, &minor, &patch); err != nil {
-		return 0
+	return ParseKernelVersion(strings.TrimSpace(string(data)))
+}
+
+// ParseKernelVersion extracts major.minor.patch from a kernel release string.
+// Handles non-standard suffixes like "5.15.0-179-generic" or "6.12-rc1".
+func ParseKernelVersion(rel string) uint32 {
+	// Split on any non-digit character and collect the first three numeric tokens.
+	tokens := strings.FieldsFunc(rel, func(r rune) bool { return r < '0' || r > '9' })
+	nums := make([]uint32, 0, 3)
+	for _, t := range tokens {
+		if len(t) == 0 {
+			continue
+		}
+		var n uint32
+		if _, err := fmt.Sscanf(t, "%d", &n); err == nil {
+			nums = append(nums, n)
+		}
+		if len(nums) == 3 {
+			break
+		}
 	}
-	return KernelVer(major, minor, patch)
+	for len(nums) < 3 {
+		nums = append(nums, 0)
+	}
+	return KernelVer(nums[0], nums[1], nums[2])
 }

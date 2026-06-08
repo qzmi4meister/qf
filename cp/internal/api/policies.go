@@ -96,21 +96,22 @@ type policyHandler struct {
 
 func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, cascade *polpkg.CascadeRecompiler, tenantID pgtype.UUID) {
 	h := &policyHandler{q: q, compiler: compiler, cascade: cascade, tenantID: tenantID}
+	rw := auth.RequireRole("admin", "editor")
 	r.Get("/", h.list)
-	r.Post("/", h.create)
+	r.With(rw).Post("/", h.create)
 	r.Get("/{id}", h.get)
-	r.Put("/{id}", h.update)
-	r.Delete("/{id}", h.delete)
+	r.With(rw).Put("/{id}", h.update)
+	r.With(rw).Delete("/{id}", h.delete)
 	r.Route("/{id}/rules", func(r chi.Router) {
 		r.Get("/", h.listRules)
-		r.Post("/", h.createRule)
+		r.With(rw).Post("/", h.createRule)
 		r.Get("/{ruleID}", h.getRule)
-		r.Put("/{ruleID}", h.updateRule)
-		r.Delete("/{ruleID}", h.deleteRule)
+		r.With(rw).Put("/{ruleID}", h.updateRule)
+		r.With(rw).Delete("/{ruleID}", h.deleteRule)
 	})
-	r.Post("/{id}/preview", h.preview)
+	r.With(rw).Post("/{id}/preview", h.preview)
 	r.Get("/{id}/versions", h.listVersions)
-	r.Post("/{id}/versions/{v}/revert", h.revertVersion)
+	r.With(rw).Post("/{id}/versions/{v}/revert", h.revertVersion)
 }
 
 // ── Policies ──────────────────────────────────────────────────────────────────
