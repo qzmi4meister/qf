@@ -3,7 +3,7 @@ import { fmtDateTime } from '../utils/date'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Stack, Title, Tabs, Button, TextInput, Textarea, NumberInput, Table, Badge,
+  Stack, Tabs, Button, TextInput, Textarea, NumberInput, Badge,
   Group, Text, Anchor, ActionIcon, Modal, Select, Checkbox, Loader, Center,
   Accordion, Code, Paper, Alert, Divider,
 } from '@mantine/core'
@@ -11,6 +11,10 @@ import {
   IconPlus, IconTrash, IconEdit, IconPlayerPlay, IconHistory, IconArrowBack,
   IconAlertCircle, IconX, IconUsers,
 } from '@tabler/icons-react'
+import QFBadge from '../components/QFBadge'
+import QFCard from '../components/QFCard'
+import { QFTable, TH, TD } from '../components/QFTable'
+import PageHead from '../components/PageHead'
 import { notifications } from '@mantine/notifications'
 import { getPolicy, updatePolicy, createPolicy, previewPolicy, listVersions, revertVersion } from '../api/policies'
 import { listObjectGroups } from '../api/objectgroups'
@@ -357,11 +361,14 @@ export default function PolicyDetail() {
 
   return (
     <Stack gap="md">
-      <Group>
-        <Anchor component={Link} to="/policies">Policies</Anchor>
-        <Text c="dimmed">/</Text>
-        <Title order={2}>{isNew ? 'New policy' : (policy?.name ?? '…')}</Title>
-      </Group>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <Anchor component={Link} to="/policies" style={{ color: 'var(--qf-brand)', textDecoration: 'none', fontSize: 'var(--qf-t-sm)' }}>Policies</Anchor>
+          <span>/</span>
+          <span style={{ color: 'var(--qf-fg-3)' }}>{isNew ? 'New policy' : (policy?.name ?? '…')}</span>
+        </div>
+        <PageHead title={isNew ? 'New policy' : (policy?.name ?? '…')} />
+      </div>
 
       <Tabs defaultValue="edit">
         <Tabs.List>
@@ -402,105 +409,134 @@ export default function PolicyDetail() {
                 <Text fw={600}>Rules</Text>
                 <Button size="xs" leftSection={<IconPlus size={12} />} onClick={addRule}>Add rule</Button>
               </Group>
-              <Table highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>#</Table.Th>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>Direction</Table.Th>
-                    <Table.Th>Action</Table.Th>
-                    <Table.Th>Log</Table.Th>
-                    <Table.Th />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {rules.map((r, i) => (
-                    <Table.Tr key={i} style={editRuleIdx === i ? { background: 'var(--mantine-color-blue-light)' } : undefined}>
-                      <Table.Td>{r.priority}</Table.Td>
-                      <Table.Td>{r.name || <Text c="dimmed" size="sm">unnamed</Text>}</Table.Td>
-                      <Table.Td><Badge size="sm" variant="outline">{r.direction}</Badge></Table.Td>
-                      <Table.Td>
-                        <Badge size="sm" color={r.action === 'deny' ? 'red' : r.action === 'allow' ? 'green' : 'blue'}>
-                          {r.action}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>{r.log ? '✓' : ''}</Table.Td>
-                      <Table.Td>
-                        <Group gap={4}>
-                          <ActionIcon size="sm" variant="subtle" onClick={() => setEditRuleIdx(editRuleIdx === i ? null : i)}>
-                            <IconEdit size={12} />
-                          </ActionIcon>
-                          <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRule(i)}>
-                            <IconTrash size={12} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                  {rules.length === 0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={6}>
-                        <Text c="dimmed" ta="center" size="sm" py="md">No rules — add one above</Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
 
-              {editRuleIdx !== null && rules[editRuleIdx] && (
-                <Paper withBorder p="md" mt="sm">
-                  <Stack gap="sm">
-                    <Text fw={600} size="sm">Edit rule #{editRuleIdx + 1}</Text>
-                    <Group>
-                      <TextInput
-                        label="Name"
-                        value={rules[editRuleIdx].name}
-                        onChange={(e) => updateRule(editRuleIdx, { name: e.currentTarget.value })}
-                        style={{ flex: 1 }}
-                      />
-                      <NumberInput
-                        label="Priority"
-                        value={rules[editRuleIdx].priority}
-                        onChange={(v) => updateRule(editRuleIdx, { priority: Number(v) })}
-                        w={100}
-                      />
-                    </Group>
-                    <Group>
-                      <Select
-                        label="Direction"
-                        data={['ingress', 'egress', 'both']}
-                        value={rules[editRuleIdx].direction}
-                        onChange={(v) => updateRule(editRuleIdx, { direction: v ?? 'ingress' })}
-                        w={140}
-                      />
-                      <Select
-                        label="Action"
-                        data={['allow', 'deny', 'log']}
-                        value={rules[editRuleIdx].action}
-                        onChange={(v) => updateRule(editRuleIdx, { action: v ?? 'allow' })}
-                        w={120}
-                      />
-                    </Group>
-                    <div>
-                      <Text size="sm" fw={500} mb={4}>Match conditions</Text>
-                      <MatchEditor value={rules[editRuleIdx].match} onChange={(v) => updateRule(editRuleIdx, { match: v })} />
+              {/* Rule table + Inspector side panel */}
+              <QFCard pad={false}>
+                <div style={{ display: 'flex' }}>
+                  {/* Table */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <QFTable minWidth={400}>
+                      <thead>
+                        <tr style={{ height: 38 }}>
+                          <TH w={60}>Priority</TH>
+                          <TH>Name</TH>
+                          <TH w={90}>Direction</TH>
+                          <TH w={80}>Action</TH>
+                          <TH w={50}>Log</TH>
+                          <TH w={64} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rules.map((r, i) => {
+                          const selected = editRuleIdx === i
+                          return (
+                            <tr
+                              key={i}
+                              className="qf-row"
+                              onClick={() => setEditRuleIdx(selected ? null : i)}
+                              style={{
+                                borderTop: '1px solid var(--qf-border-2)',
+                                cursor: 'pointer',
+                                background: selected ? 'var(--qf-bg-muted)' : undefined,
+                                boxShadow: selected ? 'inset 2px 0 0 var(--qf-brand-solid)' : undefined,
+                              }}
+                            >
+                              <TD mono muted>{r.priority}</TD>
+                              <TD style={{ color: r.name ? 'var(--qf-fg-2)' : 'var(--qf-fg-faint)' }}>
+                                {r.name || 'unnamed'}
+                              </TD>
+                              <TD muted>{r.direction}</TD>
+                              <TD>
+                                <QFBadge tone={r.action === 'deny' ? 'bad' : r.action === 'allow' ? 'ok' : 'info'}>
+                                  {r.action}
+                                </QFBadge>
+                              </TD>
+                              <TD muted>{r.log ? '✓' : ''}</TD>
+                              <TD>
+                                <ActionIcon
+                                  size="sm" variant="subtle" color="red"
+                                  onClick={(e) => { e.stopPropagation(); removeRule(i) }}
+                                >
+                                  <IconTrash size={12} />
+                                </ActionIcon>
+                              </TD>
+                            </tr>
+                          )
+                        })}
+                        {rules.length === 0 && (
+                          <tr>
+                            <td colSpan={6}>
+                              <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--qf-fg-mute)', fontSize: 'var(--qf-t-sm)' }}>
+                                No rules — click "Add rule" above
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </QFTable>
+                  </div>
+
+                  {/* Inspector panel */}
+                  {editRuleIdx !== null && rules[editRuleIdx] && (
+                    <div style={{
+                      width: 320, flexShrink: 0,
+                      borderLeft: '1px solid var(--qf-border-1)',
+                      padding: 20, overflowY: 'auto',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <span style={{ fontSize: 'var(--qf-t-sm)', fontWeight: 600, color: 'var(--qf-fg-1)' }}>
+                          Rule #{editRuleIdx + 1}
+                        </span>
+                        <ActionIcon size="sm" variant="subtle" onClick={() => setEditRuleIdx(null)}>
+                          <IconX size={14} />
+                        </ActionIcon>
+                      </div>
+                      <Stack gap="sm">
+                        <Group>
+                          <TextInput
+                            label="Name" size="xs" style={{ flex: 1 }}
+                            value={rules[editRuleIdx].name}
+                            onChange={(e) => updateRule(editRuleIdx, { name: e.currentTarget.value })}
+                          />
+                          <NumberInput
+                            label="Priority" size="xs" w={80}
+                            value={rules[editRuleIdx].priority}
+                            onChange={(v) => updateRule(editRuleIdx, { priority: Number(v) })}
+                          />
+                        </Group>
+                        <Group grow>
+                          <Select
+                            label="Direction" size="xs"
+                            data={['ingress', 'egress', 'both']}
+                            value={rules[editRuleIdx].direction}
+                            onChange={(v) => updateRule(editRuleIdx, { direction: v ?? 'ingress' })}
+                          />
+                          <Select
+                            label="Action" size="xs"
+                            data={['allow', 'deny', 'log']}
+                            value={rules[editRuleIdx].action}
+                            onChange={(v) => updateRule(editRuleIdx, { action: v ?? 'allow' })}
+                          />
+                        </Group>
+                        <div>
+                          <Text size="xs" fw={500} mb={4}>Match conditions</Text>
+                          <MatchEditor value={rules[editRuleIdx].match} onChange={(v) => updateRule(editRuleIdx, { match: v })} />
+                        </div>
+                        <Group>
+                          <Checkbox label="Log" size="xs"
+                            checked={rules[editRuleIdx].log}
+                            onChange={(e) => updateRule(editRuleIdx, { log: e.currentTarget.checked })}
+                          />
+                          <Checkbox label="Silent" size="xs"
+                            checked={rules[editRuleIdx].silent}
+                            onChange={(e) => updateRule(editRuleIdx, { silent: e.currentTarget.checked })}
+                          />
+                        </Group>
+                      </Stack>
                     </div>
-                    <Group>
-                      <Checkbox
-                        label="Log"
-                        checked={rules[editRuleIdx].log}
-                        onChange={(e) => updateRule(editRuleIdx, { log: e.currentTarget.checked })}
-                      />
-                      <Checkbox
-                        label="Silent"
-                        checked={rules[editRuleIdx].silent}
-                        onChange={(e) => updateRule(editRuleIdx, { silent: e.currentTarget.checked })}
-                      />
-                    </Group>
-                    <Button size="xs" variant="subtle" onClick={() => setEditRuleIdx(null)}>Close</Button>
-                  </Stack>
-                </Paper>
-              )}
+                  )}
+                </div>
+              </QFCard>
             </div>
 
             <Group>

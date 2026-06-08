@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react'
+import type { SortState } from '../hooks/useSortState'
 
 interface THProps extends ThHTMLAttributes<HTMLTableCellElement> {
   children?: ReactNode
@@ -52,6 +53,34 @@ export function TD({ children, mono, muted, right, style, ...rest }: TDProps) {
     >
       {children}
     </td>
+  )
+}
+
+interface SortTHProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  sortKey: string
+  sort: SortState
+  onSort: (key: string) => void
+  children?: ReactNode
+  w?: number | string
+  right?: boolean
+}
+
+export function SortTH({ sortKey, sort, onSort, children, w, right, style, ...rest }: SortTHProps) {
+  const active = sort.key === sortKey
+  const icon = active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'
+  return (
+    <TH
+      w={w}
+      right={right}
+      onClick={() => onSort(sortKey)}
+      style={{ cursor: 'pointer', userSelect: 'none', ...style }}
+      {...rest}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {children}
+        <span style={{ color: active ? 'var(--qf-brand)' : 'var(--qf-fg-faint)', fontSize: 10 }}>{icon}</span>
+      </span>
+    </TH>
   )
 }
 
