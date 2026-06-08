@@ -31,7 +31,6 @@ function protoName(p: number): string {
   return names[p] ?? String(p)
 }
 
-const VERDICT_TONE: Record<string, Tone> = { allow: 'ok', deny: 'bad', log: 'info' }
 
 function FilterPills({ opts, value, onChange }: {
   opts: Array<[string, string, Tone]>

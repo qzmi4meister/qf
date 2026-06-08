@@ -23,7 +23,6 @@ const ROLE_TONE: Record<string, Tone> = { admin: 'pol', editor: 'info', operator
 
 function UserAvatar({ user, size = 30 }: { user: User; size?: number }) {
   const pending = user.status === 'pending'
-  const isOidc = user.is_oidc
   const initials = user.email.split('@')[0].split(/[.\-_]/).map(s => s[0]).join('').toUpperCase().slice(0, 2)
   return (
     <span style={{

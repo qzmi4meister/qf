@@ -16,7 +16,15 @@ import { QFTable, TH, TD, SortTH } from '../components/QFTable'
 import { SkeletonRow } from '../components/Skeleton'
 import type { Tone } from '../components/QFBadge'
 
-const TOKEN_TONE: Record<string, Tone> = { active: 'ok', expiring: 'warn', revoked: 'bad' }
+function tokenStatus(t: { uses_count: number; max_uses: number; expires_at: string }): { label: string; tone: Tone } {
+  if (t.uses_count >= t.max_uses) return { label: 'revoked', tone: 'bad' }
+  const exp = new Date(t.expires_at)
+  const now = new Date()
+  const diffH = (exp.getTime() - now.getTime()) / 3_600_000
+  if (diffH < 0) return { label: 'expired', tone: 'bad' }
+  if (diffH < 24) return { label: 'expiring', tone: 'warn' }
+  return { label: 'active', tone: 'ok' }
+}
 
 export default function Tokens() {
   const qc = useQueryClient()
@@ -124,8 +132,8 @@ export default function Tokens() {
                 </td></tr>
               )
               : rows.map(t => {
-                const revoked = t.status === 'revoked'
-                const tone: Tone = TOKEN_TONE[t.status] ?? 'neutral'
+                const st = tokenStatus(t)
+                const revoked = st.label === 'revoked' || st.label === 'expired'
                 return (
                   <tr key={t.id} className="qf-row" style={{ borderTop: '1px solid var(--qf-border-2)', opacity: revoked ? 0.6 : 1 }}>
                     <td style={{ padding: '0 12px', height: 40 }}>
@@ -134,7 +142,7 @@ export default function Tokens() {
                         <span style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-fg-1)', fontWeight: 500, textDecoration: revoked ? 'line-through' : 'none', fontSize: 'var(--qf-t-base)' }}>
                           {t.id.slice(0, 12)}
                         </span>
-                        <QFBadge tone={tone}>{t.status}</QFBadge>
+                        <QFBadge tone={st.tone}>{st.label}</QFBadge>
                       </div>
                     </td>
                     <TD mono muted>{t.type}</TD>

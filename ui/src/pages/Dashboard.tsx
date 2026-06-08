@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { fmtDateTime } from '../utils/date'
 import { useQuery } from '@tanstack/react-query'
-import { IconRefreshCw, IconArrowRight } from '@tabler/icons-react'
+import { IconRefresh, IconArrowRight, IconServer } from '@tabler/icons-react'
 import { listHosts } from '../api/hosts'
 import { listPolicies } from '../api/policies'
 import { listAuditLog } from '../api/misc'
@@ -9,9 +9,7 @@ import PageHead from '../components/PageHead'
 import QFCard from '../components/QFCard'
 import QFBadge from '../components/QFBadge'
 import { TONE_VARS } from '../components/QFBadge'
-import { SkeletonRow } from '../components/Skeleton'
 import EmptyState from '../components/EmptyState'
-import { IconServer } from '@tabler/icons-react'
 import type { Tone } from '../components/QFBadge'
 
 /* ── helpers ─────────────────────────────────────────────────────── */
@@ -231,7 +229,7 @@ export default function Dashboard() {
               onClick={() => refetchAll()}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', border: '1px solid var(--qf-border-1)' }}
             >
-              <IconRefreshCw size={13} /> Refresh
+              <IconRefresh size={13} /> Refresh
             </button>
             <button
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none' }}
@@ -403,7 +401,7 @@ export default function Dashboard() {
                       No activity yet
                     </td></tr>
                   )
-                  : audits.map((a, i) => (
+                  : audits.map((a) => (
                     <tr key={a.id} className="qf-row" style={{ borderTop: '1px solid var(--qf-border-2)' }}>
                       <td style={{ padding: '0 16px', height: 40, fontFamily: 'var(--qf-mono)', fontSize: 'var(--qf-t-base)', color: 'var(--qf-fg-mute)', whiteSpace: 'nowrap' }}>
                         {fmtDateTime(a.created_at)}
