@@ -77,6 +77,11 @@ tcp_fsm(__u8 cur, __u8 flags, __u8 is_reply)
 		if (flags & TCP_FLAG_ACK)
 			return TCP_CS_CLOSED;
 		break;
+	case TCP_CS_CLOSED:
+		/* Port reuse: new SYN on a closed entry restarts the handshake. */
+		if ((flags & TCP_FLAG_SYN) && !(flags & TCP_FLAG_ACK))
+			return TCP_CS_SYN_SENT;
+		break;
 	}
 	return cur;
 }

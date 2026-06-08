@@ -232,14 +232,14 @@ export default function ObjectGroups() {
                   {typeRows.map((g) => (
                     <Table.Tr key={g.id}>
                       <Table.Td>
-                        <Text
-                          size="sm"
-                          fw={500}
-                          style={{ cursor: 'pointer' }}
+                        <span
                           onClick={() => openEdit(g)}
+                          style={{ color: 'var(--qf-brand)', fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--qf-mono)', textDecoration: 'none' }}
+                          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
                         >
                           {g.name}
-                        </Text>
+                        </span>
                       </Table.Td>
                       <Table.Td><SpecSummary group={g} /></Table.Td>
                       <Table.Td>{fmtDateTime(g.updated_at)}</Table.Td>

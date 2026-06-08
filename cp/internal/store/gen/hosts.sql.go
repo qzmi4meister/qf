@@ -350,3 +350,47 @@ func (q *Queries) UpdateHostStatus(ctx context.Context, arg UpdateHostStatusPara
 	)
 	return i, err
 }
+
+const upsertBulkHost = `-- name: UpsertBulkHost :one
+INSERT INTO hosts (tenant_id, hostname, labels, status)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (tenant_id, hostname) DO UPDATE
+    SET labels     = EXCLUDED.labels,
+        status     = 'enrolling',
+        updated_at = NOW()
+RETURNING id, tenant_id, hostname, labels, status, current_generation, last_heartbeat_at, agent_version, kernel_version, interfaces, created_at, updated_at, desired_generation, flow_events_enabled
+`
+
+type UpsertBulkHostParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Hostname string      `db:"hostname" json:"hostname"`
+	Labels   []byte      `db:"labels" json:"labels"`
+	Status   string      `db:"status" json:"status"`
+}
+
+func (q *Queries) UpsertBulkHost(ctx context.Context, arg UpsertBulkHostParams) (Host, error) {
+	row := q.db.QueryRow(ctx, upsertBulkHost,
+		arg.TenantID,
+		arg.Hostname,
+		arg.Labels,
+		arg.Status,
+	)
+	var i Host
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Hostname,
+		&i.Labels,
+		&i.Status,
+		&i.CurrentGeneration,
+		&i.LastHeartbeatAt,
+		&i.AgentVersion,
+		&i.KernelVersion,
+		&i.Interfaces,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DesiredGeneration,
+		&i.FlowEventsEnabled,
+	)
+	return i, err
+}

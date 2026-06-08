@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/policy"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
@@ -41,11 +42,12 @@ type ogHandler struct {
 
 func registerObjectGroups(r chi.Router, q *storegen.Queries, cascade *policy.CascadeRecompiler) {
 	h := &ogHandler{q: q, cascade: cascade}
+	rw := auth.RequireRole("admin", "editor")
 	r.Get("/", h.list)
-	r.Post("/", h.create)
+	r.With(rw).Post("/", h.create)
 	r.Get("/{id}", h.get)
-	r.Put("/{id}", h.update)
-	r.Delete("/{id}", h.delete)
+	r.With(rw).Put("/{id}", h.update)
+	r.With(rw).Delete("/{id}", h.delete)
 }
 
 func (h *ogHandler) dispatchCascade(tenantID, ogID string) {

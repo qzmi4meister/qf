@@ -215,6 +215,10 @@ func (a *Agent) runSession(ctx context.Context, c *grpcclient.Client, cfg RunFul
 		grpcclient.ApplyConfigUpdate(wc, hb, eb, cp, fc)
 	}
 
+	if a.ldr != nil {
+		a.ldr.RunConntrackGC(sctx, 30*time.Second, 120*time.Second, 30*time.Second)
+	}
+
 	errCh := make(chan error, 4)
 	go func() { errCh <- hb.Run(sctx) }()
 	go func() { errCh <- eb.Run(sctx) }()

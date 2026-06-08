@@ -96,21 +96,22 @@ type policyHandler struct {
 
 func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, cascade *polpkg.CascadeRecompiler, tenantID pgtype.UUID) {
 	h := &policyHandler{q: q, compiler: compiler, cascade: cascade, tenantID: tenantID}
+	rw := auth.RequireRole("admin", "editor")
 	r.Get("/", h.list)
-	r.Post("/", h.create)
+	r.With(rw).Post("/", h.create)
 	r.Get("/{id}", h.get)
-	r.Put("/{id}", h.update)
-	r.Delete("/{id}", h.delete)
+	r.With(rw).Put("/{id}", h.update)
+	r.With(rw).Delete("/{id}", h.delete)
 	r.Route("/{id}/rules", func(r chi.Router) {
 		r.Get("/", h.listRules)
-		r.Post("/", h.createRule)
+		r.With(rw).Post("/", h.createRule)
 		r.Get("/{ruleID}", h.getRule)
-		r.Put("/{ruleID}", h.updateRule)
-		r.Delete("/{ruleID}", h.deleteRule)
+		r.With(rw).Put("/{ruleID}", h.updateRule)
+		r.With(rw).Delete("/{ruleID}", h.deleteRule)
 	})
-	r.Post("/{id}/preview", h.preview)
+	r.With(rw).Post("/{id}/preview", h.preview)
 	r.Get("/{id}/versions", h.listVersions)
-	r.Post("/{id}/versions/{v}/revert", h.revertVersion)
+	r.With(rw).Post("/{id}/versions/{v}/revert", h.revertVersion)
 }
 
 // ── Policies ──────────────────────────────────────────────────────────────────
@@ -199,8 +200,10 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Capture current state for audit log before.
+	// Capture current state for audit log before, and save old selector for cascade.
+	var oldSelectorRaw []byte
 	if cur, err := h.q.GetPolicy(r.Context(), storegen.GetPolicyParams{ID: policyUUID, TenantID: tenantUUID}); err == nil {
+		oldSelectorRaw = cur.Selector
 		curRules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
 		if b, jerr := json.Marshal(toPolicyDetailResponse(cur, curRules)); jerr == nil {
 			SetAuditBefore(r.Context(), b)
@@ -265,7 +268,7 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
-	h.dispatchCascade(r, policyUUID)
+	h.dispatchCascadeWithOldSelector(r, policyUUID, oldSelectorRaw)
 	writeJSON(w, http.StatusOK, toPolicyDetailResponse(policy, savedRules))
 }
 
@@ -317,6 +320,20 @@ func (h *policyHandler) dispatchCascade(_ *http.Request, policyID pgtype.UUID) {
 	policyStr := uuidToStr(policyID)
 	go func() {
 		if err := h.cascade.OnPolicyChanged(context.Background(), tenantStr, policyStr); err != nil {
+			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
+		}
+	}()
+}
+
+// dispatchCascadeWithOldSelector recompiles for union(old selector hosts, new selector hosts).
+func (h *policyHandler) dispatchCascadeWithOldSelector(_ *http.Request, policyID pgtype.UUID, oldSelectorRaw []byte) {
+	if h.cascade == nil {
+		return
+	}
+	tenantStr := uuidToStr(h.tenantID)
+	policyStr := uuidToStr(policyID)
+	go func() {
+		if err := h.cascade.OnPolicyChangedWithOldSelector(context.Background(), tenantStr, policyStr, oldSelectorRaw); err != nil {
 			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
 		}
 	}()
