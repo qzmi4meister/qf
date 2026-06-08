@@ -214,15 +214,20 @@ export default function PolicyDetail() {
       setName(policy.name)
       setDescription(policy.description)
       setPriority(policy.priority)
-      const sel = (policy.selector as Record<string, string>) ?? {}
-      setSelectorLabels(Object.entries(sel).map(([key, val]) => ({ key, val })))
+      const rawSel = (policy.selector ?? {}) as Record<string, unknown>
+      const flatSel: Record<string, string> =
+        rawSel.matchLabels && typeof rawSel.matchLabels === 'object'
+          ? rawSel.matchLabels as Record<string, string>
+          : rawSel as Record<string, string>
+      setSelectorLabels(Object.entries(flatSel).map(([key, val]) => ({ key, val: String(val) })))
       setRules(policy.rules.map(({ id: _id, policy_id: _pid, created_at: _c, updated_at: _u, ...r }) => r))
     }
   }, [policy])
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const selector = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
+      const matchLabels = Object.fromEntries(selectorLabels.filter(p => p.key).map(p => [p.key, p.val]))
+      const selector = Object.keys(matchLabels).length > 0 ? { matchLabels } : {}
       if (isNew) {
         const p = await createPolicy({ name, description, priority, selector })
         await updatePolicy(p.id, { name, description, priority, selector, rules })

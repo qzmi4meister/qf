@@ -119,7 +119,7 @@ export default function HostDetail() {
       ? sel.matchLabels as Record<string, string>
       : sel as Record<string, string>
     const keys = Object.keys(ml)
-    return keys.length > 0 && keys.every(k => host.labels[k] === ml[k])
+    return keys.every(k => host.labels[k] === ml[k])
   })
 
   const filteredEvents = events.filter((e) => {
