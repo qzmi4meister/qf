@@ -46,6 +46,31 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - Tokens: PageHead+QFCard+QFTable+SortTH+QFBadge+EmptyState; keeps all modals
 - Users: PageHead+QFCard+QFTable+SortTH+QFBadge+EmptyState+UserAvatar; keeps all modals
 
+## [0.8.20] — 2026-06-08
+
+### Added
+- P8e-06: `audit_log` JOIN `users` → `actor_username` field in API response; AuditLog.tsx shows username instead of UUID
+- P8e-07: Username auth — migration `000009_username.sql` adds `username` column (backfill from email local-part, unique per tenant); login by username instead of email; JWT Claims include `username`; OIDC uses `preferred_username` claim; bootstrap admin via `QF_ADMIN_USERNAME` env
+- P8e-08: Helm — `QF_ADMIN_USERNAME` in `values.yaml`, `secret.yaml`, deployment env; OpenAPI spec updated (`email` → `username` in login schema)
+
+### Fixed
+- P8e-01: Login → Dashboard transition: removed `await` from `qc.invalidateQueries(['me'])` — navigate fires immediately after cookie set
+- P8e-02: WebSocket backend: gorilla/websocket hub, `GET /ws` endpoint (auth-gated), fan-out `{"topic":"<t>"}` on every audit log write
+- P8e-03: WebSocket frontend: `useWebSocket` hook with exponential backoff reconnect; global in Layout; invalidates TanStack Query cache by topic; removed `refetchInterval: 30_000` from Dashboard
+- P8e-04: Dashboard Refresh button now invalidates hosts, policies, and audit-log (was hosts-only)
+- P8e-05: Removed dead "Push bundle" button from Dashboard
+
+## [0.8.19] — 2026-06-07
+
+### Added
+- WebSocket invalidation hub (`cp/internal/ws/hub.go`): gorilla/websocket, ping/pong keepalive (30s ping, 60s pong timeout), fan-out broadcast
+- `useWebSocket` hook: exponential backoff (500ms → 30s), reconnects on close/error, invalidates queryClient by topic on message
+
+### Fixed
+- Login transition slowness: `await qc.invalidateQueries` after login blocked navigation; now fire-and-forget
+- Dashboard Refresh button: only refetched hosts; now invalidates all three queries (hosts/policies/audit-log)
+- Dashboard: removed non-functional "Push bundle" button; live indicator updated from "auto-refresh 30s" to "Live · WS"
+
 ## [0.8.2] — 2026-06-03
 
 ### Added
