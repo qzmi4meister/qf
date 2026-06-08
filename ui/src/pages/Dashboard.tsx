@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { fmtDateTime } from '../utils/date'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconRefresh, IconArrowRight, IconServer } from '@tabler/icons-react'
 import { listHosts } from '../api/hosts'
 import { listPolicies } from '../api/policies'
@@ -147,20 +147,26 @@ const AGENT_RANK_TONE: Tone[] = ['ok', 'info', 'warn', 'bad']
 /* ══════════════════════════════════════════════════════════════════ */
 export default function Dashboard() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
 
   const {
-    data: hosts = [], isLoading: hostsLoading, isError: hostsError, refetch: refetchAll,
-  } = useQuery({ queryKey: ['hosts'], queryFn: listHosts, refetchInterval: 30_000 })
+    data: hosts = [], isLoading: hostsLoading, isError: hostsError,
+  } = useQuery({ queryKey: ['hosts'], queryFn: listHosts })
 
   const { data: policies = [], isLoading: policiesLoading } = useQuery({
-    queryKey: ['policies'], queryFn: listPolicies, refetchInterval: 30_000,
+    queryKey: ['policies'], queryFn: listPolicies,
   })
 
   const { data: audits = [], isLoading: auditsLoading } = useQuery({
     queryKey: ['audit-log', { limit: 8 }],
     queryFn: () => listAuditLog({ limit: 8 }),
-    refetchInterval: 30_000,
   })
+
+  function handleRefresh() {
+    qc.invalidateQueries({ queryKey: ['hosts'] })
+    qc.invalidateQueries({ queryKey: ['policies'] })
+    qc.invalidateQueries({ queryKey: ['audit-log'] })
+  }
 
   const isLoading = hostsLoading || policiesLoading
   const total = hosts.length
@@ -201,7 +207,7 @@ export default function Dashboard() {
             <p style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-bad-fg)', fontSize: 'var(--qf-t-sm)', margin: '0 0 16px' }}>
               GET /api/v1/hosts → failed
             </p>
-            <button onClick={() => refetchAll()} style={{ padding: '7px 14px', borderRadius: 'var(--qf-r-md)', border: '1px solid var(--qf-border-1)', background: 'var(--qf-bg-muted)', color: 'var(--qf-fg-2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--qf-t-base)' }}>
+            <button onClick={handleRefresh} style={{ padding: '7px 14px', borderRadius: 'var(--qf-r-md)', border: '1px solid var(--qf-border-1)', background: 'var(--qf-bg-muted)', color: 'var(--qf-fg-2)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--qf-t-base)' }}>
               Retry
             </button>
           </div>
@@ -222,19 +228,14 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {!isLoading && (
               <span style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>
-                Live · auto-refresh 30s
+                Live · WS
               </span>
             )}
             <button
-              onClick={() => refetchAll()}
+              onClick={handleRefresh}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', border: '1px solid var(--qf-border-1)' }}
             >
               <IconRefresh size={13} /> Refresh
-            </button>
-            <button
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 'var(--qf-t-base)', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'var(--qf-brand-solid)', color: '#fff', border: 'none' }}
-            >
-              Push bundle
             </button>
           </div>
         }

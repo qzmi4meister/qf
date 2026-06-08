@@ -91,7 +91,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(email, password)
-      await qc.invalidateQueries({ queryKey: ['me'] })
+      qc.invalidateQueries({ queryKey: ['me'] })
       navigate('/dashboard')
     } catch {
       setError('Invalid credentials or expired session.')

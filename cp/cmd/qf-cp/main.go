@@ -27,6 +27,7 @@ import (
 	"github.com/qf/qf/cp/internal/pubsub"
 	"github.com/qf/qf/cp/internal/store"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
+	"github.com/qf/qf/cp/internal/ws"
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 	"github.com/qf/qf/version"
 	"google.golang.org/grpc"
@@ -187,6 +188,9 @@ func run() error {
 		slog.Info("OIDC enabled", "issuer", oidcCfg.Issuer)
 	}
 
+	// ── WebSocket hub ────────────────────────────────────────────────────────
+	wsHub := ws.NewHub()
+
 	// ── REST API ─────────────────────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
 		Queries:      queries,
@@ -196,6 +200,7 @@ func run() error {
 		OIDCHandler:  oidcHandler,
 		OIDCEnabled:  oidcCfg.Enabled(),
 		Hub:          hub,
+		WSHub:        wsHub,
 		Compiler:     policy.NewRulesetCompiler(queries),
 		Cascade:      cascade,
 		Disconnector: registry,

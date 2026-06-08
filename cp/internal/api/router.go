@@ -15,6 +15,7 @@ import (
 	"github.com/qf/qf/cp/internal/pki"
 	"github.com/qf/qf/cp/internal/policy"
 	"github.com/qf/qf/cp/internal/pubsub"
+	"github.com/qf/qf/cp/internal/ws"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 	"github.com/qf/qf/docs"
 	"github.com/qf/qf/version"
@@ -31,9 +32,10 @@ type RouterConfig struct {
 	Tokens       *pki.TokenStore
 	JWTSecret    []byte
 	TenantID     pgtype.UUID
-	OIDCHandler  *auth.OIDCHandler      // nil = OIDC disabled
+	OIDCHandler  *auth.OIDCHandler         // nil = OIDC disabled
 	OIDCEnabled  bool
-	Hub          *pubsub.Hub            // nil = SSE disabled
+	Hub          *pubsub.Hub               // nil = SSE disabled
+	WSHub        *ws.Hub                   // nil = WS notifications disabled
 	Compiler     *policy.RulesetCompiler
 	Cascade      *policy.CascadeRecompiler // nil = push disabled
 	Disconnector Disconnector              // nil = no live reconnect
@@ -49,7 +51,7 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Use(middleware.RequestID)
 	r.Use(structuredLogger)
 	r.Use(middleware.Recoverer)
-	r.Use(newAuditMiddleware(queries))
+	r.Use(newAuditMiddleware(queries, cfg.WSHub))
 
 	r.Get("/healthz", handleHealthz)
 	r.Get("/version", handleVersion)
@@ -120,6 +122,14 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 	r.Post("/auth/change-password", func(w http.ResponseWriter, r *http.Request) {
 		jwtMW(http.HandlerFunc(authH.ChangePassword)).ServeHTTP(w, r)
 	})
+
+	// WebSocket — authenticated, serves invalidation notifications to UI.
+	if cfg.WSHub != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(authAny)
+			r.Get("/ws", cfg.WSHub.ServeHTTP)
+		})
+	}
 
 	r.Group(func(r chi.Router) {
 		r.Use(authAny)

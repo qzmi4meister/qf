@@ -36,6 +36,7 @@ import { notifications } from '@mantine/notifications'
 import { useQuery } from '@tanstack/react-query'
 import { logout } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
+import { useWebSocket } from '../hooks/useWebSocket'
 import client from '../api/client'
 import { listHosts } from '../api/hosts'
 import { listPolicies } from '../api/policies'
@@ -271,6 +272,7 @@ export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  useWebSocket()
 
   const { data: versionData } = useQuery({
     queryKey: ['version'],

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	authpkg "github.com/qf/qf/cp/internal/auth"
+	"github.com/qf/qf/cp/internal/ws"
 	storegen "github.com/qf/qf/cp/internal/store/gen"
 )
 
@@ -27,16 +28,27 @@ func SetAuditBefore(ctx context.Context, data []byte) {
 	}
 }
 
+// pluralTopic maps objectType to the frontend React Query key prefix.
+var pluralTopic = map[string]string{
+	"host":          "hosts",
+	"policy":        "policies",
+	"objectgroup":   "objectgroups",
+	"token":         "tokens",
+	"defaultpolicy": "policies",
+	"user":          "users",
+}
+
 // auditMiddleware records POST/PUT/PATCH/DELETE mutations to audit_log.
 // Actor identity is read from JWT/API-token Claims in context.
 // "after" is captured from the response body; "before" is populated by handlers
 // via SetAuditBefore before applying changes.
 type auditMiddleware struct {
-	q *storegen.Queries
+	q     *storegen.Queries
+	wsHub *ws.Hub // nil = disabled
 }
 
-func newAuditMiddleware(q *storegen.Queries) func(http.Handler) http.Handler {
-	am := &auditMiddleware{q: q}
+func newAuditMiddleware(q *storegen.Queries, wsHub *ws.Hub) func(http.Handler) http.Handler {
+	am := &auditMiddleware{q: q, wsHub: wsHub}
 	return am.wrap
 }
 
@@ -97,6 +109,12 @@ func (am *auditMiddleware) wrap(next http.Handler) http.Handler {
 				Before:     before,
 				After:      after,
 			})
+			if am.wsHub != nil {
+				if topic, ok := pluralTopic[objectType]; ok {
+					am.wsHub.Notify(topic)
+				}
+				am.wsHub.Notify("audit-log")
+			}
 		}()
 	})
 }
