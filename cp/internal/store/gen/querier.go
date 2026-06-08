@@ -113,6 +113,7 @@ type Querier interface {
 	UpdateUserOIDCSubject(ctx context.Context, arg UpdateUserOIDCSubjectParams) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error)
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (User, error)
+	UpsertBulkHost(ctx context.Context, arg UpsertBulkHostParams) (Host, error)
 	UpsertDefaultPolicy(ctx context.Context, arg UpsertDefaultPolicyParams) (DefaultPolicy, error)
 	UpsertRuleObjectGroupRef(ctx context.Context, arg UpsertRuleObjectGroupRefParams) error
 	UpsertUserRole(ctx context.Context, arg UpsertUserRoleParams) error

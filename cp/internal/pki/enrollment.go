@@ -198,7 +198,7 @@ func (s *EnrollmentServer) resolveHost(ctx context.Context, bt *BootstrapToken, 
 			b, _ := json.Marshal(bt.LabelTemplate)
 			labelsJSON = b
 		}
-		host, err := s.queries.CreateHost(ctx, storegen.CreateHostParams{
+		host, err := s.queries.UpsertBulkHost(ctx, storegen.UpsertBulkHostParams{
 			TenantID: tenantUUID,
 			Hostname: req.Hostname,
 			Labels:   labelsJSON,

@@ -138,20 +138,21 @@ func buildPkt(srcIP, dstIP net.IP, srcPort, dstPort uint16) []byte {
 	return pkt
 }
 
-func loadForTest(t testing.TB) TcFilterObjects {
+func loadForTest(t testing.TB) BpfObjects {
 	t.Helper()
 	if err := rlimit.RemoveMemlock(); err != nil {
 		t.Logf("remove memlock (non-fatal): %v", err)
 	}
-	var objs TcFilterObjects
-	if err := LoadTcFilterObjects(&objs, nil); err != nil {
+	var raw TcFilterObjects
+	if err := LoadTcFilterObjects(&raw, nil); err != nil {
 		t.Fatalf("LoadTcFilterObjects: %v", err)
 	}
+	objs := bpfObjectsFromFull(&raw)
 	t.Cleanup(func() { objs.Close() })
 	return objs
 }
 
-func runIngress(t testing.TB, objs TcFilterObjects, src, dst string, sp, dp uint16) uint32 {
+func runIngress(t testing.TB, objs BpfObjects, src, dst string, sp, dp uint16) uint32 {
 	t.Helper()
 	pkt := buildPkt(net.ParseIP(src), net.ParseIP(dst), sp, dp)
 	ret, _, err := objs.QfTcIngress.Test(pkt)
@@ -164,7 +165,7 @@ func runIngress(t testing.TB, objs TcFilterObjects, src, dst string, sp, dp uint
 	return ret
 }
 
-func runEgress(t testing.TB, objs TcFilterObjects, src, dst string, sp, dp uint16) uint32 {
+func runEgress(t testing.TB, objs BpfObjects, src, dst string, sp, dp uint16) uint32 {
 	t.Helper()
 	pkt := buildPkt(net.ParseIP(src), net.ParseIP(dst), sp, dp)
 	ret, _, err := objs.QfTcEgress.Test(pkt)
@@ -178,7 +179,7 @@ func runEgress(t testing.TB, objs TcFilterObjects, src, dst string, sp, dp uint1
 }
 
 // putRule writes a rule entry and updates qf_rule_count.
-func putRule(t testing.TB, objs TcFilterObjects, idx uint32, entry TcFilterRuleEntry) {
+func putRule(t testing.TB, objs BpfObjects, idx uint32, entry TcFilterRuleEntry) {
 	t.Helper()
 	if err := objs.QfRules.Put(idx, entry); err != nil {
 		t.Fatalf("put rule[%d]: %v", idx, err)
@@ -190,7 +191,7 @@ func putRule(t testing.TB, objs TcFilterObjects, idx uint32, entry TcFilterRuleE
 }
 
 // putConfig writes a value to qf_config[slot].
-func putConfig(t testing.TB, objs TcFilterObjects, slot uint32, val uint32) {
+func putConfig(t testing.TB, objs BpfObjects, slot uint32, val uint32) {
 	t.Helper()
 	if err := objs.QfConfig.Put(slot, val); err != nil {
 		t.Fatalf("put config[%d]: %v", slot, err)
@@ -199,7 +200,7 @@ func putConfig(t testing.TB, objs TcFilterObjects, slot uint32, val uint32) {
 
 // seedCT inserts a conntrack entry directly into qf_conntrack.
 // Canonical key: lower src_ip (as raw uint32) goes in SrcIp.
-func seedCT(t testing.TB, objs TcFilterObjects,
+func seedCT(t testing.TB, objs BpfObjects,
 	srcIP, dstIP string, srcPort, dstPort uint16, proto, state uint8) {
 	t.Helper()
 	s, d := ip4BPF(srcIP), ip4BPF(dstIP)

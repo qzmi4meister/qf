@@ -12,6 +12,15 @@ INSERT INTO hosts (tenant_id, hostname, labels, status)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: UpsertBulkHost :one
+INSERT INTO hosts (tenant_id, hostname, labels, status)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (tenant_id, hostname) DO UPDATE
+    SET labels     = EXCLUDED.labels,
+        status     = 'enrolling',
+        updated_at = NOW()
+RETURNING *;
+
 -- name: UpdateHostLabels :one
 UPDATE hosts SET labels = $3, updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2

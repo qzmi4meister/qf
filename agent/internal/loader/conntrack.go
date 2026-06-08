@@ -1,10 +1,13 @@
 package loader
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
+	"time"
 
 	"github.com/cilium/ebpf"
 )
@@ -82,6 +85,62 @@ func (l *Loader) ConntrackDump() ([]ConntrackEntry, error) {
 
 func (l *Loader) ConntrackLookup(key ConntrackKey) (*ConntrackEntry, error) {
 	return ConntrackLookup(&l.objs, key)
+}
+
+// RunConntrackGC runs a background goroutine that periodically evicts
+// expired UDP/ICMP conntrack entries. TCP entries in CLOSED state are
+// also removed. Exits when ctx is cancelled.
+func (l *Loader) RunConntrackGC(ctx context.Context, interval, udpTimeout, icmpTimeout time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				l.sweepConntrack(udpTimeout, icmpTimeout)
+			}
+		}
+	}()
+}
+
+func (l *Loader) sweepConntrack(udpTimeout, icmpTimeout time.Duration) {
+	entries, err := ConntrackDump(&l.objs)
+	if err != nil {
+		slog.Warn("conntrack gc: dump failed", "err", err)
+		return
+	}
+	nowNs := uint64(time.Now().UnixNano())
+	deleted := 0
+	for _, e := range entries {
+		var timeout time.Duration
+		switch e.Key.Protocol {
+		case ProtoUDP:
+			timeout = udpTimeout
+		case ProtoICMP:
+			timeout = icmpTimeout
+		case ProtoTCP:
+			if e.TCPState != TCPCSClosed {
+				continue
+			}
+			// Closed TCP entries with no activity for udpTimeout are safe to remove.
+			timeout = udpTimeout
+		default:
+			continue
+		}
+		if nowNs-e.LastSeenNs > uint64(timeout) {
+			bk := canonicalCtKey(e.Key)
+			if err := l.objs.QfConntrack.Delete(bk); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+				slog.Warn("conntrack gc: delete failed", "err", err)
+			} else {
+				deleted++
+			}
+		}
+	}
+	if deleted > 0 {
+		slog.Debug("conntrack gc: evicted", "count", deleted)
+	}
 }
 
 // ── internals ────────────────────────────────────────────────────────────

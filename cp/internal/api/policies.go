@@ -200,8 +200,10 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Capture current state for audit log before.
+	// Capture current state for audit log before, and save old selector for cascade.
+	var oldSelectorRaw []byte
 	if cur, err := h.q.GetPolicy(r.Context(), storegen.GetPolicyParams{ID: policyUUID, TenantID: tenantUUID}); err == nil {
+		oldSelectorRaw = cur.Selector
 		curRules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
 		if b, jerr := json.Marshal(toPolicyDetailResponse(cur, curRules)); jerr == nil {
 			SetAuditBefore(r.Context(), b)
@@ -266,7 +268,7 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
-	h.dispatchCascade(r, policyUUID)
+	h.dispatchCascadeWithOldSelector(r, policyUUID, oldSelectorRaw)
 	writeJSON(w, http.StatusOK, toPolicyDetailResponse(policy, savedRules))
 }
 
@@ -318,6 +320,20 @@ func (h *policyHandler) dispatchCascade(_ *http.Request, policyID pgtype.UUID) {
 	policyStr := uuidToStr(policyID)
 	go func() {
 		if err := h.cascade.OnPolicyChanged(context.Background(), tenantStr, policyStr); err != nil {
+			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
+		}
+	}()
+}
+
+// dispatchCascadeWithOldSelector recompiles for union(old selector hosts, new selector hosts).
+func (h *policyHandler) dispatchCascadeWithOldSelector(_ *http.Request, policyID pgtype.UUID, oldSelectorRaw []byte) {
+	if h.cascade == nil {
+		return
+	}
+	tenantStr := uuidToStr(h.tenantID)
+	policyStr := uuidToStr(policyID)
+	go func() {
+		if err := h.cascade.OnPolicyChangedWithOldSelector(context.Background(), tenantStr, policyStr, oldSelectorRaw); err != nil {
 			slog.Warn("cascade: policy push failed", "policy", policyStr, "err", err)
 		}
 	}()

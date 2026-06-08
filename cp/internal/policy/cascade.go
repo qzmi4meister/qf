@@ -73,6 +73,56 @@ func (cr *CascadeRecompiler) OnDefaultPolicyChanged(ctx context.Context, tenantI
 	return cr.recompileAndDispatch(ctx, tenantID, hostIDs)
 }
 
+// OnPolicyChangedWithOldSelector recompiles bundles for the union of hosts
+// matched by the OLD selector (before save) and the NEW selector (after save).
+// Use this in the PUT /policies/{id} handler to ensure previously-matched hosts
+// that no longer match the new selector also receive an updated bundle.
+func (cr *CascadeRecompiler) OnPolicyChangedWithOldSelector(ctx context.Context, tenantID, policyID string, oldSelectorRaw []byte) error {
+	var tenantUUID, policyUUID pgtype.UUID
+	if err := tenantUUID.Scan(tenantID); err != nil {
+		return err
+	}
+	if err := policyUUID.Scan(policyID); err != nil {
+		return err
+	}
+
+	// Resolve hosts from old selector.
+	oldSel, _ := ParseSelector(oldSelectorRaw)
+	oldHostIDs, _ := cr.selector.ResolveHostIDs(ctx, tenantID, oldSel)
+
+	// Resolve hosts from new selector (read from DB after update).
+	policy, err := cr.queries.GetPolicy(ctx, storegen.GetPolicyParams{
+		ID: policyUUID, TenantID: tenantUUID,
+	})
+	if err != nil {
+		return fmt.Errorf("cascade: get policy: %w", err)
+	}
+	newSel, err := ParseSelector(policy.Selector)
+	if err != nil {
+		return fmt.Errorf("cascade: parse selector: %w", err)
+	}
+	newHostIDs, err := cr.selector.ResolveHostIDs(ctx, tenantID, newSel)
+	if err != nil {
+		return fmt.Errorf("cascade: resolve hosts: %w", err)
+	}
+
+	// Union of old and new.
+	hostSet := make(map[string]struct{}, len(oldHostIDs)+len(newHostIDs))
+	for _, id := range oldHostIDs {
+		hostSet[id] = struct{}{}
+	}
+	for _, id := range newHostIDs {
+		hostSet[id] = struct{}{}
+	}
+	hostIDs := make([]string, 0, len(hostSet))
+	for id := range hostSet {
+		hostIDs = append(hostIDs, id)
+	}
+
+	slog.Info("cascade: policy selector changed", "policy_id", policyID, "old_hosts", len(oldHostIDs), "new_hosts", len(newHostIDs), "total", len(hostIDs))
+	return cr.recompileAndDispatch(ctx, tenantID, hostIDs)
+}
+
 // OnHostLabelsChanged recompiles the bundle for the specific host whose
 // labels changed (selector matching may now include/exclude different policies).
 func (cr *CascadeRecompiler) OnHostLabelsChanged(ctx context.Context, tenantID, hostID string) error {
