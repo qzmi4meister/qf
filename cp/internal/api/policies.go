@@ -375,6 +375,10 @@ func (h *policyHandler) createRule(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "name required")
 		return
 	}
+	if req.State != nil && *req.State == "related" {
+		apiError(w, http.StatusUnprocessableEntity, "state=related is not implemented in the BPF datapath; rules with this state will never match")
+		return
+	}
 	if req.Direction == "" {
 		req.Direction = "ingress"
 	}
@@ -438,6 +442,10 @@ func (h *policyHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" {
 		apiError(w, http.StatusBadRequest, "name required")
+		return
+	}
+	if req.State != nil && *req.State == "related" {
+		apiError(w, http.StatusUnprocessableEntity, "state=related is not implemented in the BPF datapath; rules with this state will never match")
 		return
 	}
 	rule, err := h.q.UpdateRule(r.Context(), storegen.UpdateRuleParams{

@@ -183,7 +183,7 @@ func (s *AgentServer) Stream(stream qfv1.AgentService_StreamServer) error {
 func (s *AgentServer) handleMessage(stream qfv1.AgentService_StreamServer, id *PeerIdentity, msg *qfv1.AgentMessage) error {
 	switch p := msg.Payload.(type) {
 	case *qfv1.AgentMessage_Heartbeat:
-		return s.handleHeartbeat(id, p.Heartbeat)
+		return s.handleHeartbeat(stream.Context(), id, p.Heartbeat)
 	case *qfv1.AgentMessage_BundleAck:
 		return s.handleBundleAck(stream.Context(), id, p.BundleAck)
 	case *qfv1.AgentMessage_BundleApplied:

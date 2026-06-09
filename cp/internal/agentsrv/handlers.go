@@ -21,9 +21,7 @@ const staleThreshold = 3 * time.Minute
 // handleHeartbeat updates last_heartbeat_at, current_generation, and agent/kernel version.
 // Stale detection: if host was stale before this heartbeat, it implicitly recovers
 // because last_heartbeat_at is refreshed; a background job (MAIN-01) will re-check.
-func (s *AgentServer) handleHeartbeat(id *PeerIdentity, hb *qfv1.Heartbeat) error {
-	ctx := context.Background()
-
+func (s *AgentServer) handleHeartbeat(ctx context.Context, id *PeerIdentity, hb *qfv1.Heartbeat) error {
 	hostUUID, tenantUUID, err := parseUUIDs(id.HostID, id.TenantID)
 	if err != nil {
 		return status.Errorf(codes.Internal, "parse identity: %v", err)
@@ -34,8 +32,9 @@ func (s *AgentServer) handleHeartbeat(id *PeerIdentity, hb *qfv1.Heartbeat) erro
 		TenantID:          tenantUUID,
 		CurrentGeneration: int32(hb.CurrentGeneration),
 	}); err != nil {
-		slog.Error("agentsrv: heartbeat DB update failed", "host", id.HostID, "err", err)
-		return status.Errorf(codes.Internal, "heartbeat update: %v", err)
+		// Heartbeat is best-effort; a transient DB error must not tear down the stream.
+		slog.Warn("agentsrv: heartbeat DB update failed", "host", id.HostID, "err", err)
+		return nil
 	}
 
 	if hb.Ts != nil {

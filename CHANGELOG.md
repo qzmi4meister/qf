@@ -6,6 +6,19 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.29] — 2026-06-10
+
+### Fixed
+- P8f-09: heartbeat DB error now logs warn + returns nil (best-effort) instead of tearing down gRPC stream
+- P8f-10: API now rejects rules with `state=related` (422) — CT_RELATED unimplemented in BPF datapath
+- P8f-11: agent logs IPv6 compile warnings via slog.Warn on bundle apply
+- P8f-12: compat eval_rules null-rule check changed from `continue` to `break` — matches full/bpf_loop stop semantics
+- P8f-13: `ChangePassword` rejects passwords >72 bytes (bcrypt silent truncation)
+- P8f-14: `ingester_events_dropped_total` counter added; incremented on log/flow/counter/system channel drops
+- P8f-15: `isTCXUnsupported` uses `errors.Is` against `syscall.EOPNOTSUPP`/`ENOSYS`/`ENOENT` instead of string match
+- P8f-16: `handleHeartbeat` receives caller's stream context instead of creating `context.Background()`
+- P8f-17: `uuidStr` in auth package uses `%08x-%04x-%04x-%04x-%012x` — matches padded `uuidToStr` in api package
+
 ## [Unreleased]
 
 ### Planning

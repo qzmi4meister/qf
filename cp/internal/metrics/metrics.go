@@ -48,6 +48,13 @@ var (
 		Help:      "Agent BPF conntrack map fill ratio (0–1) from last heartbeat.",
 	}, []string{"host_id"})
 
+	// EventsDropped counts telemetry events dropped due to full ingest channels.
+	EventsDropped = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "qf",
+		Name:      "ingester_events_dropped_total",
+		Help:      "Total telemetry events dropped because the ingest channel was full.",
+	}, []string{"type"}) // type: log | flow | counter | system
+
 	// DBPoolAcquired is the number of connections currently acquired from the pool.
 	DBPoolAcquired = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "qf",
@@ -68,6 +75,7 @@ func init() {
 		ActiveStreams,
 		BundlePushDuration,
 		EventsIngested,
+		EventsDropped,
 		AgentCPU,
 		AgentMemBytes,
 		AgentConntrackUtil,

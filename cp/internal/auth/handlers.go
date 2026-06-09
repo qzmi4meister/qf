@@ -233,6 +233,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "new password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
+	if len(req.NewPassword) > 72 {
+		http.Error(w, "new password must not exceed 72 characters (bcrypt limit)", http.StatusBadRequest)
+		return
+	}
 
 	var uid pgtype.UUID
 	if err := uid.Scan(c.UserID); err != nil {
@@ -296,5 +300,5 @@ func (h *Handler) logAuditAfter(actorType, actorID, action, objectType, objectID
 
 func uuidStr(u pgtype.UUID) string {
 	b := u.Bytes
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

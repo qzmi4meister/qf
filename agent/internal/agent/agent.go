@@ -284,5 +284,8 @@ func (a *Agent) applyFn(bundle *qfv1.PolicyBundle) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	for _, w := range ar.Warnings {
+		slog.Warn("bundle apply warning", "generation", ar.Generation, "warning", w)
+	}
 	return ar.DurationMs, nil
 }

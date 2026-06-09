@@ -201,7 +201,7 @@ eval_rules(struct pkt_ctx *ctx, __u32 *matched_idx)
 		__u32 key = i;
 		struct rule_entry *rule = bpf_map_lookup_elem(&qf_rules, &key);
 		if (!rule)
-			continue;
+			break; /* stop — sparse map, no more rules (matches full/bpf_loop behaviour) */
 		if (!match_rule_compat(ctx, &rule->match))
 			continue;
 		*matched_idx = i;

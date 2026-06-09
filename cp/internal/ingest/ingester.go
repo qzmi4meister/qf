@@ -96,6 +96,7 @@ func (ing *Ingester) IngestLogEvents(tenantID, hostID pgtype.UUID, msg *qfv1.Log
 		case ing.logCh <- p:
 		default:
 			slog.Warn("ingest: log channel full, dropping event")
+			metrics.EventsDropped.WithLabelValues("log").Add(1)
 		}
 	}
 	if ing.hub != nil {
@@ -153,6 +154,7 @@ func (ing *Ingester) IngestFlowEvents(tenantID, hostID pgtype.UUID, msg *qfv1.Fl
 		case ing.flowCh <- p:
 		default:
 			slog.Warn("ingest: flow channel full, dropping event")
+			metrics.EventsDropped.WithLabelValues("flow").Add(1)
 		}
 	}
 }
@@ -174,6 +176,7 @@ func (ing *Ingester) IngestCounterUpdate(tenantID, hostID pgtype.UUID, msg *qfv1
 		case ing.counterCh <- p:
 		default:
 			slog.Warn("ingest: counter channel full, dropping snapshot")
+			metrics.EventsDropped.WithLabelValues("counter").Add(1)
 		}
 	}
 }
@@ -185,6 +188,7 @@ func (ing *Ingester) IngestSystemEvent(tenantID, hostID pgtype.UUID, msg *qfv1.S
 	case ing.systemCh <- p:
 	default:
 		slog.Warn("ingest: system event channel full, dropping")
+		metrics.EventsDropped.WithLabelValues("system").Add(1)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -166,13 +165,13 @@ func loadBpfObjects() (BpfObjects, error) {
 }
 
 // isTCXUnsupported returns true when the TCX attach error indicates the kernel
-// does not support TCX (pre-6.6). Checked by error string because the exact
-// errno varies by kernel version.
+// does not support TCX (pre-6.6). Uses errors.Is against syscall sentinels;
+// EOPNOTSUPP covers "operation not supported", ENOSYS covers "function not
+// implemented", ENOENT covers the bpf(BPF_LINK_CREATE) path on older kernels.
 func isTCXUnsupported(err error) bool {
-	s := err.Error()
-	return strings.Contains(s, "not supported") ||
-		strings.Contains(s, "operation not supported") ||
-		strings.Contains(s, "no such file")
+	return errors.Is(err, syscall.EOPNOTSUPP) ||
+		errors.Is(err, syscall.ENOSYS) ||
+		errors.Is(err, syscall.ENOENT)
 }
 
 // Close detaches all TC programs and releases BPF resources.
