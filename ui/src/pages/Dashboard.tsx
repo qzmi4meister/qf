@@ -120,6 +120,16 @@ function Spark({ data, color }: { data: number[]; color: string }) {
   )
 }
 
+/* ── Actor resolution ─────────────────────────────────────────────── */
+function resolveActor(a: { actor_username?: string; actor_type: string; after: unknown }): string {
+  if (a.actor_username) return a.actor_username
+  if (a.after && typeof a.after === 'object') {
+    const u = (a.after as Record<string, unknown>).attempted_username
+    if (typeof u === 'string' && u) return u
+  }
+  return a.actor_type
+}
+
 /* ── Actor avatar ─────────────────────────────────────────────────── */
 function ActorAvatar({ actor }: { actor: string }) {
   const isSystem = actor === 'system' || actor === 'api_token' || actor === 'ci-bot'
@@ -408,7 +418,7 @@ export default function Dashboard() {
                         {fmtDateTime(a.created_at)}
                       </td>
                       <td style={{ padding: '0 16px', height: 40 }}>
-                        <ActorAvatar actor={a.actor_id ?? a.actor_type} />
+                        <ActorAvatar actor={resolveActor(a)} />
                       </td>
                       <td style={{ padding: '0 16px', height: 40 }}>
                         <QFBadge tone={actionTone(a.action)}>{a.action}</QFBadge>

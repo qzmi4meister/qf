@@ -47,6 +47,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Username: req.Username,
 	})
 	if err != nil || user.Status != "active" {
+		h.logAuditAfter("user", "", "auth.login_failed", "user", "",
+			[]byte(`{"attempted_username":"`+req.Username+`"}`))
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -55,7 +57,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
-		h.logAudit("user", "", "auth.login_failed", "user", "")
+		h.logAudit("user", uuidStr(user.ID), "auth.login_failed", "user", uuidStr(user.ID))
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -255,6 +257,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) logAudit(actorType, actorID, action, objectType, objectID string) {
+	h.logAuditAfter(actorType, actorID, action, objectType, objectID, nil)
+}
+
+func (h *Handler) logAuditAfter(actorType, actorID, action, objectType, objectID string, after []byte) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -268,6 +274,7 @@ func (h *Handler) logAudit(actorType, actorID, action, objectType, objectID stri
 			Action:     action,
 			ObjectType: objectType,
 			ObjectID:   oID,
+			After:      after,
 		})
 	}()
 }

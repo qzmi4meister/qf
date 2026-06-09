@@ -21,6 +21,15 @@ function actionTone(action: string): Tone {
   return 'info'
 }
 
+function resolveActor(a: { actor_username?: string; actor_type: string; after: unknown }): string {
+  if (a.actor_username) return a.actor_username
+  if (a.after && typeof a.after === 'object') {
+    const u = (a.after as Record<string, unknown>).attempted_username
+    if (typeof u === 'string' && u) return u
+  }
+  return a.actor_type
+}
+
 function ActorAvatar({ actor }: { actor: string }) {
   const isSystem = actor === 'system' || actor === 'ci-bot' || actor === 'api_token'
   const initials = actor.split(/[.\-_]/).map(s => s[0]).join('').toUpperCase().slice(0, 2)
@@ -156,7 +165,7 @@ export default function AuditLog() {
                 >
                   <TD mono muted>{fmtDateTime(l.created_at)}</TD>
                   <td style={{ padding: '0 12px', height: 40 }}>
-                    <ActorAvatar actor={l.actor_username ?? l.actor_type} />
+                    <ActorAvatar actor={resolveActor(l)} />
                   </td>
                   <TD><QFBadge tone={actionTone(l.action)}>{l.action}</QFBadge></TD>
                   <TD mono muted>{l.object_type}{l.object_id ? ` ${l.object_id.slice(0, 8)}` : ''}</TD>
