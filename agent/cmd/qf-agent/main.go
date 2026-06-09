@@ -57,7 +57,7 @@ func main() {
 		}
 		slog.Info("agent: no PKI found, starting initial enrollment", "addr", cfg.EnrollEndpoint)
 		hostname, _ := os.Hostname()
-		if _, enrollErr := grpcclient.Enroll(ctx, cfg.EnrollEndpoint, cfg.EnrollToken, hostname, cfg.PKIDir); enrollErr != nil {
+		if _, enrollErr := grpcclient.Enroll(ctx, cfg.EnrollEndpoint, cfg.EnrollToken, hostname, cfg.PKIDir, cfg.EnrollCA); enrollErr != nil {
 			slog.Error("agent: initial enrollment failed", "err", enrollErr)
 			os.Exit(1)
 		}
@@ -96,7 +96,7 @@ func main() {
 				"enroll_addr", cfg.EnrollEndpoint)
 			hostname, _ := os.Hostname()
 			_, enrollErr := grpcclient.Enroll(ctx, cfg.EnrollEndpoint,
-				cfg.EnrollToken, hostname, cfg.PKIDir)
+				cfg.EnrollToken, hostname, cfg.PKIDir, cfg.EnrollCA)
 			if enrollErr != nil {
 				slog.Error("agent: re-enrollment failed", "err", enrollErr)
 				os.Exit(1)

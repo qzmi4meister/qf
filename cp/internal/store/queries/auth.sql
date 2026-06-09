@@ -18,10 +18,13 @@ SELECT * FROM users WHERE tenant_id = $1 AND username = $2;
 SELECT * FROM users WHERE tenant_id = $1 ORDER BY created_at DESC;
 
 -- name: UpdateUserPassword :one
-UPDATE users SET password_hash = $3 WHERE id = $1 AND tenant_id = $2 RETURNING *;
+UPDATE users SET password_hash = $3, token_version = token_version + 1 WHERE id = $1 AND tenant_id = $2 RETURNING *;
 
 -- name: UpdateUserStatus :one
-UPDATE users SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING *;
+UPDATE users SET status = $3, token_version = token_version + 1 WHERE id = $1 AND tenant_id = $2 RETURNING *;
+
+-- name: BumpUserTokenVersion :exec
+UPDATE users SET token_version = token_version + 1 WHERE id = $1;
 
 -- name: UpdateUserLastLogin :exec
 UPDATE users SET last_login_at = NOW() WHERE id = $1;

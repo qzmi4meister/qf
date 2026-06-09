@@ -31,6 +31,11 @@ type Config struct {
 	// EnrollToken is the bootstrap token used for re-enrollment when the agent
 	// certificate expires. Empty means re-enrollment is disabled (manual action required).
 	EnrollToken string
+	// EnrollCA is the path to the CA certificate PEM file used to verify the enrollment
+	// server's TLS certificate. When empty, the system trust store is used; if the
+	// enrollment server uses a self-signed cert not in the system store, set this to
+	// the CP CA cert path (e.g. /etc/qf/ca.crt after first enrollment).
+	EnrollCA string
 }
 
 // Load reads the config file (if it exists) and applies environment overrides.
@@ -83,7 +88,7 @@ func loadFile(path string, cfg *Config) error {
 func applyEnv(cfg *Config) {
 	keys := []string{
 		"QF_CP_ENDPOINT", "QF_IFACE", "QF_PKI_DIR", "QF_LOG_LEVEL",
-		"QF_ENROLL_ENDPOINT", "QF_ENROLL_TOKEN",
+		"QF_ENROLL_ENDPOINT", "QF_ENROLL_TOKEN", "QF_ENROLL_CA",
 	}
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
@@ -106,6 +111,8 @@ func applyKV(cfg *Config, k, v string) {
 		cfg.EnrollEndpoint = v
 	case "QF_ENROLL_TOKEN":
 		cfg.EnrollToken = v
+	case "QF_ENROLL_CA":
+		cfg.EnrollCA = v
 	default:
 		slog.Debug("config: unknown key", "key", k)
 	}

@@ -56,7 +56,7 @@ const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (tenant_id, email, username, password_hash, oidc_subject, status)
 VALUES ($1, $2, $3, $4, $5, 'active')
-RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
+RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version
 `
 
 type CreateUserParams struct {
@@ -87,8 +87,18 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
+}
+
+const bumpUserTokenVersion = `-- name: BumpUserTokenVersion :exec
+UPDATE users SET token_version = token_version + 1 WHERE id = $1
+`
+
+func (q *Queries) BumpUserTokenVersion(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, bumpUserTokenVersion, id)
+	return err
 }
 
 const deleteAPIToken = `-- name: DeleteAPIToken :exec
@@ -181,7 +191,7 @@ func (q *Queries) GetAPITokenByHash(ctx context.Context, tokenHash string) (ApiT
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE id = $1 AND tenant_id = $2
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version FROM users WHERE id = $1 AND tenant_id = $2
 `
 
 type GetUserParams struct {
@@ -202,12 +212,13 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 AND email = $2
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version FROM users WHERE tenant_id = $1 AND email = $2
 `
 
 type GetUserByEmailParams struct {
@@ -228,12 +239,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 AND username = $2
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version FROM users WHERE tenant_id = $1 AND username = $2
 `
 
 type GetUserByUsernameParams struct {
@@ -254,6 +266,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernamePa
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
 }
@@ -311,7 +324,7 @@ func (q *Queries) ListAPITokens(ctx context.Context, tenantID pgtype.UUID) ([]Ap
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username FROM users WHERE tenant_id = $1 ORDER BY created_at DESC
+SELECT id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version FROM users WHERE tenant_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListUsers(ctx context.Context, tenantID pgtype.UUID) ([]User, error) {
@@ -333,6 +346,7 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID pgtype.UUID) ([]User, 
 			&i.LastLoginAt,
 			&i.CreatedAt,
 			&i.Username,
+			&i.TokenVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -378,7 +392,7 @@ func (q *Queries) UpdateUserOIDCSubject(ctx context.Context, arg UpdateUserOIDCS
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :one
-UPDATE users SET password_hash = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
+UPDATE users SET password_hash = $3, token_version = token_version + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version
 `
 
 type UpdateUserPasswordParams struct {
@@ -400,12 +414,13 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const updateUserStatus = `-- name: UpdateUserStatus :one
-UPDATE users SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username
+UPDATE users SET status = $3, token_version = token_version + 1 WHERE id = $1 AND tenant_id = $2 RETURNING id, tenant_id, email, password_hash, oidc_subject, status, last_login_at, created_at, username, token_version
 `
 
 type UpdateUserStatusParams struct {
@@ -427,6 +442,7 @@ func (q *Queries) UpdateUserStatus(ctx context.Context, arg UpdateUserStatusPara
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.Username,
+		&i.TokenVersion,
 	)
 	return i, err
 }

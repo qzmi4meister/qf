@@ -79,7 +79,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	refresh, err := IssueRefreshToken(h.secret, userIDStr)
+	refresh, err := IssueRefreshToken(h.secret, userIDStr, user.TokenVersion)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -121,7 +121,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userIDStr, err := ParseRefreshToken(h.secret, c.Value)
+	userIDStr, claimTV, err := ParseRefreshToken(h.secret, c.Value)
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -137,6 +137,10 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		TenantID: h.tenantID,
 	})
 	if err != nil || user.Status != "active" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if claimTV != user.TokenVersion {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -177,6 +181,10 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if c := ClaimsFromCtx(r.Context()); c != nil {
 		h.logAudit("user", c.UserID, "auth.logout", "user", c.UserID)
+		var uid pgtype.UUID
+		if err := uid.Scan(c.UserID); err == nil {
+			_ = h.q.BumpUserTokenVersion(r.Context(), uid)
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: accessCookie, Value: "", MaxAge: -1, Path: "/"})
 	http.SetCookie(w, &http.Cookie{Name: refreshCookie, Value: "", MaxAge: -1, Path: "/auth/refresh"})

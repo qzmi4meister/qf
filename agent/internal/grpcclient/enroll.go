@@ -5,16 +5,18 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 // EnrollResult holds the credentials returned by EnrollmentService.Enroll.
@@ -23,7 +25,7 @@ type EnrollResult struct {
 	CPEndpoint string
 }
 
-// Enroll dials the enrollment endpoint (plain gRPC, no mTLS), sends an EnrollRequest
+// Enroll dials the enrollment endpoint over TLS, sends an EnrollRequest
 // with the given bootstrap token and a freshly generated CSR, and atomically writes
 // the issued credentials to pkiDir:
 //
@@ -32,9 +34,29 @@ type EnrollResult struct {
 //   - ca.crt              (PEM, 0644)
 //   - bundle-signing.pub  (PEM, 0644) — written only when CP returns it
 //
+// caFile is the path to the CA cert PEM for verifying the enrollment server.
+// When empty, the system trust store is used. If the enrollment server uses a
+// self-signed CA not in the system store, point caFile at the CP CA cert.
 // pkiDir must already exist. Files are written atomically via a temp-file rename.
-func Enroll(ctx context.Context, enrollAddr, token, hostname, pkiDir string) (*EnrollResult, error) {
-	conn, err := grpc.NewClient(enrollAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func Enroll(ctx context.Context, enrollAddr, token, hostname, pkiDir, caFile string) (*EnrollResult, error) {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
+
+	if caFile != "" {
+		caPEM, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("enroll: read CA file %s: %w", caFile, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("enroll: no valid certs in %s", caFile)
+		}
+		tlsCfg.RootCAs = pool
+	} else {
+		slog.Warn("enroll: QF_ENROLL_CA not set, using system trust store; " +
+			"set QF_ENROLL_CA to the CP CA cert path for full verification")
+	}
+
+	conn, err := grpc.NewClient(enrollAddr, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	if err != nil {
 		return nil, fmt.Errorf("enroll: dial %s: %w", enrollAddr, err)
 	}

@@ -176,7 +176,7 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	refresh, err := IssueRefreshToken(h.secret, userIDStr)
+	refresh, err := IssueRefreshToken(h.secret, userIDStr, user.TokenVersion)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

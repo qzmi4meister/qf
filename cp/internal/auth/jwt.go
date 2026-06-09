@@ -39,11 +39,19 @@ func IssueAccessToken(secret []byte, userID, tenantID, username, email, role str
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
 
-func IssueRefreshToken(secret []byte, userID string) (string, error) {
-	claims := jwt.RegisteredClaims{
-		Subject:   userID,
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(refreshTokenTTL)),
+type RefreshClaims struct {
+	TokenVersion int32 `json:"tv"`
+	jwt.RegisteredClaims
+}
+
+func IssueRefreshToken(secret []byte, userID string, tokenVersion int32) (string, error) {
+	claims := RefreshClaims{
+		TokenVersion: tokenVersion,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(refreshTokenTTL)),
+		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
@@ -65,19 +73,19 @@ func ParseAccessToken(secret []byte, tokenStr string) (*Claims, error) {
 	return c, nil
 }
 
-func ParseRefreshToken(secret []byte, tokenStr string) (userID string, err error) {
-	tok, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
+func ParseRefreshToken(secret []byte, tokenStr string) (userID string, tokenVersion int32, err error) {
+	tok, err := jwt.ParseWithClaims(tokenStr, &RefreshClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return secret, nil
 	})
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	rc, ok := tok.Claims.(*jwt.RegisteredClaims)
+	rc, ok := tok.Claims.(*RefreshClaims)
 	if !ok || !tok.Valid {
-		return "", errors.New("invalid refresh token")
+		return "", 0, errors.New("invalid refresh token")
 	}
-	return rc.Subject, nil
+	return rc.Subject, rc.TokenVersion, nil
 }

@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	BumpUserTokenVersion(ctx context.Context, id pgtype.UUID) error
 	// ── API tokens ────────────────────────────────────────────────────────────
 	CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) (ApiToken, error)
 	CreateHost(ctx context.Context, arg CreateHostParams) (Host, error)

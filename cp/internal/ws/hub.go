@@ -3,6 +3,7 @@ package ws
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -18,7 +19,17 @@ const (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  256,
 	WriteBufferSize: 512,
-	CheckOrigin:     func(_ *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
+	},
 }
 
 type client struct {

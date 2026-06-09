@@ -31,6 +31,7 @@ import (
 	qfv1 "github.com/qf/qf/proto/qf/v1"
 	"github.com/qf/qf/version"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func main() {
@@ -152,8 +153,12 @@ func run() error {
 		return fmt.Errorf("mTLS gRPC server: %w", err)
 	}
 
-	// ── Enrollment gRPC server (plain, no mTLS) ───────────────────────────────
-	enrollSrv := grpc.NewServer()
+	// ── Enrollment gRPC server (server-side TLS, no client cert) ─────────────
+	enrollTLS := credentials.NewTLS(&tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		MinVersion:   tls.VersionTLS13,
+	})
+	enrollSrv := grpc.NewServer(grpc.Creds(enrollTLS))
 	enrollSvc := pki.NewEnrollmentServer(ca, bundleSigner, tokenStore, queries, cfg.cpEndpoint, cascade)
 	qfv1.RegisterEnrollmentServiceServer(enrollSrv, enrollSvc)
 
