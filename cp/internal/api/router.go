@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qf/qf/cp/internal/auth"
 	"github.com/qf/qf/cp/internal/embeddedui"
 	"github.com/qf/qf/cp/internal/pki"
@@ -29,6 +30,7 @@ type Disconnector interface {
 // RouterConfig holds dependencies for NewRouter.
 type RouterConfig struct {
 	Queries      *storegen.Queries
+	DB           *pgxpool.Pool
 	Tokens       *pki.TokenStore
 	JWTSecret    []byte
 	TenantID     pgtype.UUID
@@ -138,7 +140,7 @@ func NewRouter(cfg RouterConfig) *chi.Mux {
 			registerHosts(r, queries, cfg.Cascade, cfg.Compiler, cfg.Disconnector)
 			registerEvents(r, queries, cfg.Hub)
 		})
-		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries, cfg.Compiler, cfg.Cascade, cfg.TenantID) })
+		r.Route("/policies", func(r chi.Router) { registerPolicies(r, queries, cfg.DB, cfg.Compiler, cfg.Cascade, cfg.TenantID) })
 		r.Route("/objectgroups", func(r chi.Router) { registerObjectGroups(r, queries, cfg.Cascade) })
 		r.Route("/tokens", func(r chi.Router) { registerTokens(r, tokens) })
 		r.Route("/default-policy", func(r chi.Router) { registerDefaultPolicy(r, queries, cfg.Cascade) })

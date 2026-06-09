@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"os"
@@ -244,6 +245,9 @@ func RandSerial() (*big.Int, error) { return randSerial() }
 // encryptKey encrypts keyDER with AES-256-GCM using masterKey.
 // Output format: nonce(12) || ciphertext.
 func encryptKey(keyDER, masterKey []byte) ([]byte, error) {
+	if len(masterKey) < 32 {
+		return nil, fmt.Errorf("pki: masterKey too short (%d bytes, need 32)", len(masterKey))
+	}
 	block, err := aes.NewCipher(masterKey[:32])
 	if err != nil {
 		return nil, err
@@ -261,6 +265,9 @@ func encryptKey(keyDER, masterKey []byte) ([]byte, error) {
 
 // decryptKey reverses encryptKey.
 func decryptKey(data, masterKey []byte) ([]byte, error) {
+	if len(masterKey) < 32 {
+		return nil, fmt.Errorf("pki: masterKey too short (%d bytes, need 32)", len(masterKey))
+	}
 	block, err := aes.NewCipher(masterKey[:32])
 	if err != nil {
 		return nil, err
@@ -268,6 +275,9 @@ func decryptKey(data, masterKey []byte) ([]byte, error) {
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
+	}
+	if len(data) < gcm.NonceSize() {
+		return nil, fmt.Errorf("pki: encrypted key data too short (%d bytes)", len(data))
 	}
 	nonce := data[:gcm.NonceSize()]
 	return gcm.Open(nil, nonce, data[gcm.NonceSize():], nil)

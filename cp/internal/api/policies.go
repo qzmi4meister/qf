@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/qf/qf/cp/internal/auth"
 	polpkg "github.com/qf/qf/cp/internal/policy"
@@ -89,13 +90,14 @@ type updateRuleRequest struct {
 
 type policyHandler struct {
 	q        *storegen.Queries
+	db       *pgxpool.Pool
 	compiler *polpkg.RulesetCompiler
 	cascade  *polpkg.CascadeRecompiler // nil = push disabled
 	tenantID pgtype.UUID
 }
 
-func registerPolicies(r chi.Router, q *storegen.Queries, compiler *polpkg.RulesetCompiler, cascade *polpkg.CascadeRecompiler, tenantID pgtype.UUID) {
-	h := &policyHandler{q: q, compiler: compiler, cascade: cascade, tenantID: tenantID}
+func registerPolicies(r chi.Router, q *storegen.Queries, db *pgxpool.Pool, compiler *polpkg.RulesetCompiler, cascade *polpkg.CascadeRecompiler, tenantID pgtype.UUID) {
+	h := &policyHandler{q: q, db: db, compiler: compiler, cascade: cascade, tenantID: tenantID}
 	rw := auth.RequireRole("admin", "editor")
 	r.Get("/", h.list)
 	r.With(rw).Post("/", h.create)
@@ -210,7 +212,16 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	policy, err := h.q.UpdatePolicy(r.Context(), storegen.UpdatePolicyParams{
+	tx, err := h.db.Begin(r.Context())
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "begin tx: "+err.Error())
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
+	qtx := h.q.WithTx(tx)
+
+	policy, err := qtx.UpdatePolicy(r.Context(), storegen.UpdatePolicyParams{
 		ID:          policyUUID,
 		TenantID:    tenantUUID,
 		Name:        req.Name,
@@ -223,10 +234,13 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sync rules: delete all existing, recreate from request body.
-	existing, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
+	// Sync rules: delete all existing, recreate from request body (within tx).
+	existing, _ := qtx.ListRulesByPolicy(r.Context(), policyUUID)
 	for _, er := range existing {
-		h.q.DeleteRule(r.Context(), er.ID) //nolint:errcheck
+		if err := qtx.DeleteRule(r.Context(), er.ID); err != nil {
+			apiError(w, http.StatusInternalServerError, "delete rule: "+err.Error())
+			return
+		}
 	}
 	for _, rr := range req.Rules {
 		if rr.Direction == "" {
@@ -235,7 +249,7 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 		if rr.Action == "" {
 			rr.Action = "deny"
 		}
-		h.q.CreateRule(r.Context(), storegen.CreateRuleParams{ //nolint:errcheck
+		if _, err := qtx.CreateRule(r.Context(), storegen.CreateRuleParams{
 			PolicyID:  policyUUID,
 			Name:      rr.Name,
 			Priority:  rr.Priority,
@@ -245,8 +259,17 @@ func (h *policyHandler) update(w http.ResponseWriter, r *http.Request) {
 			Action:    rr.Action,
 			Log:       rr.Log,
 			Silent:    rr.Silent,
-		})
+		}); err != nil {
+			apiError(w, http.StatusInternalServerError, "create rule: "+err.Error())
+			return
+		}
 	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		apiError(w, http.StatusInternalServerError, "commit tx: "+err.Error())
+		return
+	}
+
 	savedRules, _ := h.q.ListRulesByPolicy(r.Context(), policyUUID)
 
 	// Write version snapshot asynchronously (best-effort).

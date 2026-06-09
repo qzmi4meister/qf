@@ -199,6 +199,7 @@ func run() error {
 	// ── REST API ─────────────────────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
 		Queries:      queries,
+		DB:           pool,
 		Tokens:       tokenStore,
 		JWTSecret:    jwtSecret,
 		TenantID:     defaultTenant.ID,

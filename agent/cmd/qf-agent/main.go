@@ -40,6 +40,17 @@ func main() {
 	}
 	defer l.Close()
 
+	if cfg.FailClosed {
+		slog.Info("agent: fail-closed mode — denying all traffic until first bundle")
+		fc := loader.DefaultConfig
+		fc.DefaultIngress = loader.ActionDeny
+		fc.DefaultEgress = loader.ActionDeny
+		if err := l.SetConfig(fc); err != nil {
+			slog.Error("agent: failed to apply fail-closed config", "err", err)
+			os.Exit(1)
+		}
+	}
+
 	ag := agent.New(l, nil)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

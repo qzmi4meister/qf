@@ -12,6 +12,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// dummyHash is a pre-computed bcrypt hash used for constant-time comparison
+// when the user does not exist, preventing username enumeration via timing.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("qf-dummy-password-do-not-use"), bcrypt.DefaultCost)
+
 type Handler struct {
 	q        *storegen.Queries
 	secret   []byte
@@ -47,12 +51,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Username: req.Username,
 	})
 	if err != nil || user.Status != "active" {
+		// Constant-time: run dummy bcrypt to prevent username enumeration via timing.
+		bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password)) //nolint:errcheck
 		h.logAuditAfter("user", "", "auth.login_failed", "user", "",
 			[]byte(`{"attempted_username":"`+req.Username+`"}`))
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 	if user.PasswordHash == nil {
+		bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password)) //nolint:errcheck
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}

@@ -36,6 +36,10 @@ type Config struct {
 	// enrollment server uses a self-signed cert not in the system store, set this to
 	// the CP CA cert path (e.g. /etc/qf/ca.crt after first enrollment).
 	EnrollCA string
+	// FailClosed controls the default BPF action before the first policy bundle is
+	// received from CP. When true, all traffic is denied until a bundle arrives.
+	// Default false (fail-open) preserves connectivity during agent restart.
+	FailClosed bool
 }
 
 // Load reads the config file (if it exists) and applies environment overrides.
@@ -88,7 +92,7 @@ func loadFile(path string, cfg *Config) error {
 func applyEnv(cfg *Config) {
 	keys := []string{
 		"QF_CP_ENDPOINT", "QF_IFACE", "QF_PKI_DIR", "QF_LOG_LEVEL",
-		"QF_ENROLL_ENDPOINT", "QF_ENROLL_TOKEN", "QF_ENROLL_CA",
+		"QF_ENROLL_ENDPOINT", "QF_ENROLL_TOKEN", "QF_ENROLL_CA", "QF_FAIL_CLOSED",
 	}
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
@@ -113,6 +117,8 @@ func applyKV(cfg *Config, k, v string) {
 		cfg.EnrollToken = v
 	case "QF_ENROLL_CA":
 		cfg.EnrollCA = v
+	case "QF_FAIL_CLOSED":
+		cfg.FailClosed = v == "1" || v == "true"
 	default:
 		slog.Debug("config: unknown key", "key", k)
 	}
