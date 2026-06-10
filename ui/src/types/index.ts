@@ -5,6 +5,7 @@ export interface Host {
   labels: Record<string, string>
   status: string
   current_generation: number
+  desired_generation: number
   last_heartbeat_at?: string
   agent_version?: string
   kernel_version?: string

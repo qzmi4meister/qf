@@ -6,6 +6,12 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.30] — 2026-06-10
+
+### Changed
+- Dashboard: replaced "Bundle pushes" stub panel with real "Policy convergence" panel — shows converged/total hosts, progress bar, list of drifted hosts (current_gen → desired_gen) with link to host detail
+- API: `GET /api/v1/hosts` now includes `desired_generation` field in each host response
+
 ## [0.8.29] — 2026-06-10
 
 ### Fixed

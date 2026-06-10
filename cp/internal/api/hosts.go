@@ -25,6 +25,7 @@ type HostResponse struct {
 	Labels             map[string]string `json:"labels"`
 	Status             string            `json:"status"`
 	CurrentGeneration  int32             `json:"current_generation"`
+	DesiredGeneration  int32             `json:"desired_generation"`
 	LastHeartbeatAt    *time.Time        `json:"last_heartbeat_at,omitempty"`
 	AgentVersion       *string           `json:"agent_version,omitempty"`
 	KernelVersion      *string           `json:"kernel_version,omitempty"`
@@ -284,6 +285,7 @@ func toHostResponse(h storegen.Host) HostResponse {
 		Hostname:           h.Hostname,
 		Status:             h.Status,
 		CurrentGeneration:  h.CurrentGeneration,
+		DesiredGeneration:  h.DesiredGeneration,
 		AgentVersion:       h.AgentVersion,
 		KernelVersion:      h.KernelVersion,
 		FlowEventsEnabled:  h.FlowEventsEnabled,

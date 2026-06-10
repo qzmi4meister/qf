@@ -104,22 +104,6 @@ function Donut({ data, total }: { data: DonutSeg[]; total: number }) {
   )
 }
 
-/* ── Sparkline ────────────────────────────────────────────────────── */
-function Spark({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(...data, 1)
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 34 }}>
-      {data.map((v, i) => (
-        <span key={i} style={{
-          flex: 1, height: `${(v / max) * 100}%`, minWidth: 2,
-          background: color, borderRadius: 1,
-          opacity: i > data.length - 4 ? 1 : 0.45,
-        }} />
-      ))}
-    </div>
-  )
-}
-
 /* ── Actor resolution ─────────────────────────────────────────────── */
 function resolveActor(a: { actor_username?: string; actor_type: string; after: unknown }): string {
   if (a.actor_username) return a.actor_username
@@ -150,8 +134,6 @@ function ActorAvatar({ actor }: { actor: string }) {
   )
 }
 
-/* ── Static spark (no timeseries API yet) ─────────────────────────── */
-const PUSH_SPARK = [3,5,4,8,6,9,7,11,8,6,10,12,9,7,8,11,13,10,9,8,12,10,11,9]
 const AGENT_RANK_TONE: Tone[] = ['ok', 'info', 'warn', 'bad']
 
 /* ══════════════════════════════════════════════════════════════════ */
@@ -197,6 +179,11 @@ export default function Dashboard() {
 
   const breakdownSegs: BreakdownSeg[] = donutData.filter(d => d.value > 0)
     .map(d => ({ value: d.value, tone: d.tone }))
+
+  /* convergence — hosts where current_generation matches desired_generation */
+  const drifted = hosts.filter(h => h.current_generation !== h.desired_generation)
+  const converged = total - drifted.length
+  const convergePct = total > 0 ? Math.round(converged / total * 100) : 100
 
   /* agent versions — derived from real host data */
   const agentVersionMap = hosts.reduce((a, h) => {
@@ -347,24 +334,51 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Bundle pushes */}
+              {/* Policy convergence */}
               <div style={{ background: 'var(--qf-bg-surface)', border: '1px solid var(--qf-border-1)', borderRadius: 'var(--qf-r-lg)', overflow: 'hidden' }}>
-                <CardHead
-                  title="Bundle pushes"
-                  right={<span style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>24h</span>}
-                />
+                <CardHead title="Policy convergence" />
                 <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* converged / total */}
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontSize: 'var(--qf-t-3xl)', fontWeight: 700, fontFamily: 'var(--qf-mono)', letterSpacing: '-0.02em', color: 'var(--qf-fg-1)' }}>
-                      {audits.filter(a => a.action.toLowerCase().includes('push')).length || '—'}
+                      {converged}<span style={{ fontSize: 'var(--qf-t-lg)', color: 'var(--qf-fg-mute)', fontWeight: 400 }}>/{total}</span>
                     </span>
-                    <span style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-ok-fg)' }}>all converged</span>
+                    <span style={{ fontSize: 'var(--qf-t-sm)', fontFamily: 'var(--qf-mono)', color: drifted.length === 0 ? 'var(--qf-ok-fg)' : 'var(--qf-warn-fg)' }}>
+                      {convergePct}%
+                    </span>
                   </div>
-                  <Spark data={PUSH_SPARK} color="var(--qf-brand-solid)" />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>
-                    <span>7d trend</span>
-                    <span>p95 ~1.2s</span>
+                  {/* progress bar */}
+                  <div style={{ height: 6, background: 'var(--qf-bg-inset)', borderRadius: 'var(--qf-r-full)', overflow: 'hidden' }}>
+                    <span style={{
+                      display: 'block', height: '100%', borderRadius: 'var(--qf-r-full)',
+                      width: `${convergePct}%`,
+                      background: drifted.length === 0 ? TONE_VARS['ok'].solid : TONE_VARS['warn'].solid,
+                      transition: 'width 0.3s ease',
+                    }} />
                   </div>
+                  {/* drifted host list */}
+                  {drifted.length === 0 ? (
+                    <span style={{ fontSize: 'var(--qf-t-sm)', color: 'var(--qf-ok-fg)' }}>All hosts converged</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {drifted.slice(0, 5).map(h => (
+                        <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--qf-t-sm)' }}>
+                          <span
+                            style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-fg-2)', cursor: 'pointer' }}
+                            onClick={() => navigate(`/hosts/${h.id}`)}
+                          >{h.hostname}</span>
+                          <span style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-fg-mute)', whiteSpace: 'nowrap' }}>
+                            {h.current_generation} → {h.desired_generation}
+                          </span>
+                        </div>
+                      ))}
+                      {drifted.length > 5 && (
+                        <span style={{ fontSize: 'var(--qf-t-xs)', color: 'var(--qf-fg-mute)' }}>
+                          +{drifted.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
