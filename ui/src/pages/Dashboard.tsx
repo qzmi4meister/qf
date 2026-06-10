@@ -181,7 +181,7 @@ export default function Dashboard() {
     .map(d => ({ value: d.value, tone: d.tone }))
 
   /* convergence — hosts where current_generation matches desired_generation */
-  const drifted = hosts.filter(h => h.current_generation !== h.desired_generation)
+  const drifted = hosts.filter(h => h.current_generation < h.desired_generation)
   const converged = total - drifted.length
   const convergePct = total > 0 ? Math.round(converged / total * 100) : 100
 
@@ -367,8 +367,8 @@ export default function Dashboard() {
                             style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-fg-2)', cursor: 'pointer' }}
                             onClick={() => navigate(`/hosts/${h.id}`)}
                           >{h.hostname}</span>
-                          <span style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-fg-mute)', whiteSpace: 'nowrap' }}>
-                            {h.current_generation} → {h.desired_generation}
+                          <span style={{ fontFamily: 'var(--qf-mono)', color: 'var(--qf-warn-fg)', whiteSpace: 'nowrap' }}>
+                            gen {h.current_generation} / {h.desired_generation}
                           </span>
                         </div>
                       ))}

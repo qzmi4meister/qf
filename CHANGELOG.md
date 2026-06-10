@@ -6,6 +6,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.31] — 2026-06-10
+
+### Fixed
+- Dashboard convergence panel: drifted filter was `current !== desired` — incorrect because `desired_generation` was initialized to 0 by migration 006 while `current_generation` was already >0; counters diverge by design. Correct check: `current < desired` (agent behind = not converged)
+
 ## [0.8.30] — 2026-06-10
 
 ### Changed
