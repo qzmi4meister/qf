@@ -166,15 +166,18 @@ export default function Dashboard() {
   /* status breakdown */
   const sc = hosts.reduce((a, h) => { a[h.status] = (a[h.status] ?? 0) + 1; return a }, {} as Record<string,number>)
   const active = sc['active'] ?? 0
-  const offline = sc['offline'] ?? 0
   const enrolling = sc['enrolling'] ?? 0
-  const errored = sc['error'] ?? 0
+  const stale = sc['stale'] ?? 0
+  const needsRebootstrap = sc['needs_rebootstrap'] ?? 0
+  const revoked = sc['revoked'] ?? 0
+  const issues = needsRebootstrap + revoked
 
   const donutData: DonutSeg[] = [
-    { value: active,   tone: 'ok',   label: 'Active' },
-    { value: enrolling, tone: 'warn', label: 'Enrolling' },
-    { value: offline,  tone: 'bad',  label: 'Offline' },
-    { value: errored,  tone: 'term', label: 'Error' },
+    { value: active,           tone: 'ok',      label: 'Active' },
+    { value: enrolling,        tone: 'info',     label: 'Enrolling' },
+    { value: stale,            tone: 'neutral',  label: 'Stale' },
+    { value: needsRebootstrap, tone: 'bad',      label: 'Needs rebootstrap' },
+    { value: revoked,          tone: 'term',     label: 'Revoked' },
   ]
 
   const breakdownSegs: BreakdownSeg[] = donutData.filter(d => d.value > 0)
@@ -252,8 +255,8 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 14 }}>
           <Kpi label="Total Hosts" value={fmt(total)} breakdown={breakdownSegs} />
           <Kpi label="Active" value={fmt(active)} tone="ok" sub={total > 0 ? `${Math.round(active / total * 100)}%` : undefined} />
-          <Kpi label="Offline" value={offline} tone="bad" sub={offline > 0 ? 'needs attn' : undefined} />
-          <Kpi label="Enrolling" value={enrolling} tone="warn" />
+          <Kpi label="Stale" value={stale} tone="neutral" sub={stale > 0 ? 'needs attn' : undefined} />
+          <Kpi label="Issues" value={issues} tone="bad" sub={issues > 0 ? `${needsRebootstrap} reboot · ${revoked} revoked` : undefined} />
           <Kpi label="Policies" value={policies.length} tone="pol" sub={`${policies.length} active`} />
         </div>
       )}

@@ -7,7 +7,7 @@ import { IconAlertTriangle } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { getDefaultPolicy, updateDefaultPolicy } from '../api/misc'
 
-const ACTIONS = ['allow', 'deny', 'log']
+const ACTIONS = ['allow', 'deny']
 
 export default function DefaultPolicy() {
   const qc = useQueryClient()

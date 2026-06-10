@@ -6,6 +6,24 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.32] — 2026-06-10
+
+### Fixed
+- P8g-01: PolicyDetail rule direction Select — removed invalid `both` option (DB CHECK only allows ingress/egress)
+- P8g-02: DefaultPolicy ACTIONS — removed `log`; default policy only accepts `allow`/`deny`
+- P8g-03: Enrollment token create — `target_host_id` is now required for `single_host` type with host Select (searchable)
+- P8g-04: Host status taxonomy aligned with DB: `stale`/`needs_rebootstrap`/`revoked` replace dead `offline`/`error`/`pending` across StatusBadge, Hosts filters, Dashboard KPI, and donut chart
+- P8g-05: Events Export — implemented CSV export (was a no-op button)
+- P8g-06: Flows — removed non-functional "Export PCAP" button (no backend endpoint)
+- P8g-07: Events Pause stale closure — `pausedRef` (useRef) replaces state read inside SSE listener; hover-pause and manual-pause are independent flags
+- P8g-08: AuditLog infinite scroll — `filtered` array wrapped in `useMemo` to prevent constant `pageSize` reset from new array reference each render
+- P8g-09: API Tokens — Tokens page has Enrollment/API tabs; API token list/create/delete now surfaced in UI
+- P8g-10: PolicyDetail rule inspector — added Conntrack state Select (new/established/invalid; related excluded per P8f-10)
+- P8g-11: WS topic mapping — `policies` topic now also invalidates `['default-policy']` query key
+- P8g-12: HostDetail Policies tab — matched policies derived from server-side ruleset (respects matchExpressions) with fallback to client-side matchLabels
+- P8g-13: Login OIDC button text — "Continue with Okta SSO" → "Continue with SSO"
+- P8g-14: assignHost — injects `host-id: <uuid>` label instead of `hostname: <name>` (stable, less likely to conflict)
+
 ## [0.8.31] — 2026-06-10
 
 ### Fixed

@@ -65,7 +65,8 @@ export default function Events() {
   const [search, setSearch] = useState('')
   const [live, setLive] = useState(false)
   const [liveEvents, setLiveEvents] = useState<LogEvent[]>([])
-  const [paused, setPaused] = useState(false)
+  const [manualPaused, setManualPaused] = useState(false)
+  const pausedRef = useRef(false)
   const esRef = useRef<EventSource | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -100,7 +101,7 @@ export default function Events() {
     const es = new EventSource(url, { withCredentials: true })
     esRef.current = es
     es.addEventListener('log_event', (e) => {
-      if (paused) return
+      if (pausedRef.current) return
       try {
         const event: LogEvent = JSON.parse(e.data)
         setLiveEvents(prev => [...prev, event].slice(-500))
@@ -110,10 +111,10 @@ export default function Events() {
   }, [live, hostId])
 
   useEffect(() => {
-    if (!paused && scrollRef.current) {
+    if (!pausedRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [liveEvents, paused])
+  }, [liveEvents])
 
   const displayEvents = live ? liveEvents : historyEvents
 
@@ -128,6 +129,21 @@ export default function Events() {
     return matchAction && matchSearch
   })
 
+  function exportCSV() {
+    const header = 'id,time,direction,action,protocol,src_ip,src_port,dst_ip,dst_port,rule_id\n'
+    const rows = filtered.map(e =>
+      [e.id, e.created_at, e.direction, e.action, protoName(e.protocol),
+       e.src_ip ?? '', e.src_port ?? '', e.dst_ip ?? '', e.dst_port ?? '', e.rule_id ?? ''].join(',')
+    ).join('\n')
+    const blob = new Blob([header + rows], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'events.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <>
       <PageHead
@@ -135,8 +151,8 @@ export default function Events() {
         sub="Agent and enforcement events"
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 'var(--qf-t-base)', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', border: '1px solid var(--qf-border-1)', fontWeight: 600 }}>
-              <IconDownload size={14} /> Export
+            <button onClick={exportCSV} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 'var(--qf-t-base)', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', border: '1px solid var(--qf-border-1)', fontWeight: 600 }}>
+              <IconDownload size={14} /> Export CSV
             </button>
             <button
               onClick={() => { setLive(l => !l); if (!live) setLiveEvents([]) }}
@@ -174,10 +190,10 @@ export default function Events() {
         </div>
         {live && (
           <button
-            onClick={() => setPaused(p => !p)}
+            onClick={() => setManualPaused(p => { const next = !p; pausedRef.current = next; return next })}
             style={{ padding: '6px 11px', border: '1px solid var(--qf-border-1)', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', fontSize: 'var(--qf-t-sm)', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 600 }}
           >
-            {paused ? 'Resume' : 'Pause'}
+            {manualPaused ? 'Resume' : 'Pause'}
           </button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 'var(--qf-t-sm)', color: 'var(--qf-fg-mute)', fontFamily: 'var(--qf-mono)' }}>
@@ -192,8 +208,8 @@ export default function Events() {
       ) : (
         <QFCard pad={false}>
           <div ref={scrollRef} style={{ maxHeight: 560, overflowY: 'auto' }}
-            onMouseEnter={() => setPaused(true)}
-            onMouseLeave={() => setPaused(false)}
+            onMouseEnter={() => { pausedRef.current = true }}
+            onMouseLeave={() => { pausedRef.current = manualPaused }}
           >
             <QFTable minWidth={700}>
               <thead style={{ position: 'sticky', top: 0, background: 'var(--qf-bg-surface)', zIndex: 1 }}>
