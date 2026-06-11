@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	accessTokenTTL  = 15 * time.Minute
+	accessTokenTTL  = 30 * time.Minute
 	refreshTokenTTL = 7 * 24 * time.Hour
 	refreshCookie   = "qf_refresh"
 	accessCookie    = "qf_token"
