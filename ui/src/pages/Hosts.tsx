@@ -18,10 +18,11 @@ import { SkeletonRow } from '../components/Skeleton'
 import { TONE_VARS, type Tone } from '../components/QFBadge'
 
 const STATUS_FILTERS: { status: string; label: string; tone: Tone }[] = [
-  { status: 'active',    label: 'Active',    tone: 'ok' },
-  { status: 'offline',   label: 'Offline',   tone: 'neutral' },
-  { status: 'enrolling', label: 'Enrolling', tone: 'info' },
-  { status: 'error',     label: 'Error',     tone: 'bad' },
+  { status: 'active',            label: 'Active',            tone: 'ok' },
+  { status: 'enrolling',         label: 'Enrolling',         tone: 'info' },
+  { status: 'stale',             label: 'Stale',             tone: 'neutral' },
+  { status: 'needs_rebootstrap', label: 'Needs rebootstrap', tone: 'bad' },
+  { status: 'revoked',           label: 'Revoked',           tone: 'term' },
 ]
 
 export default function Hosts() {

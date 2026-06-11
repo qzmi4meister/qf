@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { fmtDateTime } from '../utils/date'
 import { useQuery } from '@tanstack/react-query'
 import { Modal, Group, Button, Text, Code } from '@mantine/core'
@@ -57,7 +57,7 @@ export default function AuditLog() {
     queryFn: () => listAuditLog({ limit: 200 }),
   })
 
-  const filtered = sorted(
+  const filtered = useMemo(() => sorted(
     logs.filter(l =>
       !search ||
       (l.actor_id ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -66,7 +66,8 @@ export default function AuditLog() {
       (l.object_id ?? '').includes(search)
     ),
     (l, k) => k === 'created_at' ? l.created_at : k === 'action' ? l.action : undefined,
-  )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [logs, search, sort])
 
   const { visible, sentinelRef } = useInfiniteScroll(filtered)
 

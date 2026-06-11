@@ -150,7 +150,7 @@ export default function Login() {
                   textDecoration: 'none', cursor: 'pointer', boxSizing: 'border-box',
                 }}
               >
-                <IconShieldLock size={16} /> Continue with Okta SSO
+                <IconShieldLock size={16} /> Continue with SSO
               </a>
             </>
           )}

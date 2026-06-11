@@ -1,14 +1,14 @@
 import type { Tone } from './QFBadge'
 import { TONE_VARS } from './QFBadge'
 
-export type HostStatus = 'active' | 'offline' | 'enrolling' | 'error' | 'pending' | string
+export type HostStatus = 'active' | 'enrolling' | 'stale' | 'needs_rebootstrap' | 'revoked' | string
 
 const STATUS_MAP: Record<string, { tone: Tone; label: string }> = {
-  active:    { tone: 'ok',      label: 'Active' },
-  offline:   { tone: 'neutral', label: 'Offline' },
-  enrolling: { tone: 'info',    label: 'Enrolling' },
-  error:     { tone: 'bad',     label: 'Error' },
-  pending:   { tone: 'warn',    label: 'Pending' },
+  active:            { tone: 'ok',      label: 'Active' },
+  enrolling:         { tone: 'info',    label: 'Enrolling' },
+  stale:             { tone: 'neutral', label: 'Stale' },
+  needs_rebootstrap: { tone: 'bad',     label: 'Needs rebootstrap' },
+  revoked:           { tone: 'term',    label: 'Revoked' },
 }
 
 interface StatusBadgeProps {

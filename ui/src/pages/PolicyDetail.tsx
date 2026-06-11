@@ -302,8 +302,8 @@ export default function PolicyDetail() {
   }
 
   async function assignHost(host: Host) {
-    await patchHost(host.id, { labels: { ...host.labels, hostname: host.hostname } })
-    const newMatchLabels = { ...getPolicyMatchLabels(), hostname: host.hostname }
+    await patchHost(host.id, { labels: { ...host.labels, 'host-id': host.id } })
+    const newMatchLabels = { ...getPolicyMatchLabels(), 'host-id': host.id }
     await savePolicyWithSelector(newMatchLabels)
     qc.invalidateQueries({ queryKey: ['hosts'] })
     setSelectedHostId(null)
@@ -512,7 +512,7 @@ export default function PolicyDetail() {
                         <Group grow>
                           <Select
                             label="Direction" size="xs"
-                            data={['ingress', 'egress', 'both']}
+                            data={['ingress', 'egress']}
                             value={rules[editRuleIdx].direction}
                             onChange={(v) => updateRule(editRuleIdx, { direction: v ?? 'ingress' })}
                           />
@@ -523,6 +523,18 @@ export default function PolicyDetail() {
                             onChange={(v) => updateRule(editRuleIdx, { action: v ?? 'allow' })}
                           />
                         </Group>
+                        <Select
+                          label="Conntrack state" size="xs"
+                          clearable
+                          placeholder="Any (stateless)"
+                          data={[
+                            { value: 'new',         label: 'new — first packet of connection' },
+                            { value: 'established', label: 'established — reply seen' },
+                            { value: 'invalid',     label: 'invalid — not matching any connection' },
+                          ]}
+                          value={rules[editRuleIdx].state ?? null}
+                          onChange={(v) => updateRule(editRuleIdx, { state: v ?? undefined })}
+                        />
                         <div>
                           <Text size="xs" fw={500} mb={4}>Match conditions</Text>
                           <MatchEditor value={rules[editRuleIdx].match} onChange={(v) => updateRule(editRuleIdx, { match: v })} />

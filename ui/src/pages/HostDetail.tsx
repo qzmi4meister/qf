@@ -113,14 +113,21 @@ export default function HostDetail() {
   if (isLoading) return <Center h={200}><Loader /></Center>
   if (!host) return <Text c="red">Host not found</Text>
 
-  const matchedPolicies = allPolicies.filter(p => {
-    const sel = (p.selector ?? {}) as Record<string, unknown>
-    const ml: Record<string, string> = (sel.matchLabels && typeof sel.matchLabels === 'object')
-      ? sel.matchLabels as Record<string, string>
-      : sel as Record<string, string>
-    const keys = Object.keys(ml)
-    return keys.every(k => host.labels[k] === ml[k])
-  })
+  const matchedPolicies = ruleset
+    ? Array.from(
+        ruleset.rules.reduce((m, r) => {
+          if (!m.has(r.policy_id)) m.set(r.policy_id, { id: r.policy_id, name: r.policy_name })
+          return m
+        }, new Map<string, { id: string; name: string }>()).values()
+      )
+    : allPolicies.filter(p => {
+        const sel = (p.selector ?? {}) as Record<string, unknown>
+        const ml: Record<string, string> = (sel.matchLabels && typeof sel.matchLabels === 'object')
+          ? sel.matchLabels as Record<string, string>
+          : sel as Record<string, string>
+        const keys = Object.keys(ml)
+        return keys.every(k => host.labels[k] === ml[k])
+      }).map(p => ({ id: p.id, name: p.name }))
 
   const filteredEvents = events.filter((e) => {
     const matchAction = !actionFilter || e.action === actionFilter
@@ -244,9 +251,9 @@ export default function HostDetail() {
                     <TD>
                       <Link to={`/policies/${p.id}`} style={{ color: 'var(--qf-brand)', textDecoration: 'none' }}>{p.name}</Link>
                     </TD>
-                    <TD mono muted>{p.priority}</TD>
-                    <TD muted>{p.description || '—'}</TD>
-                    <TD mono muted right>{fmtDateTime(p.updated_at)}</TD>
+                    <TD mono muted>{'priority' in p ? String((p as { priority: number }).priority) : '—'}</TD>
+                    <TD muted>{'description' in p ? ((p as { description?: string }).description || '—') : '—'}</TD>
+                    <TD mono muted right>{'updated_at' in p ? fmtDateTime((p as { updated_at: string }).updated_at) : '—'}</TD>
                   </tr>
                 ))}
                 {matchedPolicies.length === 0 && (

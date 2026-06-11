@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 // Topics broadcast by the server map to multiple queryKey prefixes.
 const TOPIC_KEYS: Record<string, string[][]> = {
   hosts:        [['hosts'], ['host']],
-  policies:     [['policies'], ['policy']],
+  policies:     [['policies'], ['policy'], ['default-policy']],
   objectgroups: [['objectgroups']],
   tokens:       [['tokens']],
   users:        [['users']],

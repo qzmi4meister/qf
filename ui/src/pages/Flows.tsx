@@ -65,11 +65,7 @@ export default function Flows() {
       <PageHead
         title="Flows"
         sub="Sampled packet verdicts"
-        actions={
-          <button style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', fontSize: 'var(--qf-t-base)', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--qf-r-md)', background: 'transparent', color: 'var(--qf-fg-2)', border: '1px solid var(--qf-border-1)', fontWeight: 600 }}>
-            Export PCAP
-          </button>
-        }
+        actions={undefined}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
